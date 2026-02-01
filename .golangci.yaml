@@ -1,0 +1,148 @@
+version: "2"
+
+issues:
+  # checks work only code differs from the main branch
+  new-from-merge-base: main
+  max-same-issues: 3
+  max-issues-per-linter: 3
+
+linters:
+  # The value can be: `standard`, `all`, `none`, or `fast`.
+  default: all
+
+  disable:
+    # to disable for some reason any of these linters just uncomment
+    #      - interfacebloat
+    #      - dupwordissue/#204_linter
+    #      - gochecknoinits
+    #      - intrange
+    #      - funlen
+    #      - forcetypeassert
+    #      - godox
+    #      - recvcheck
+    #      - staticcheck
+    #      - unparam
+    - wsl # Deprecated, using wsl_v5 instead
+    #      - noinlineerr
+    #      - exhaustruct
+    #      - tagalign
+    #      - depguard
+    #      - varnamelen
+    #      - tagliatelle
+    #      - revive
+    #      - perfsprint
+    #      - nonamedreturns
+    #      - nlreturn
+    #      - nestif
+    #      - nakedret
+    #      - mnd
+    #      - lll
+    #      - nolintlint
+    #      - ireturn
+    #      - inamedparam
+    #      - gosec
+    #      - gocritic
+    #      - gochecknoglobals
+    #      - err113
+    #      - errorlint
+    #      - durationcheck
+    #      - dupl
+    #      - depguard
+    #      - cyclop
+    #      - asasalint
+    #      - contextcheck
+    #      - wrapcheck
+    - whitespace # wsl_v5 does better
+  #      - unconvert
+  #      - nilnil
+  #      - ineffassign
+  #      - godot
+  #      - forbidigo
+  #      - wastedassign
+  #      - containedctx
+  #      - exhaustive
+  #      - gocognit
+  #      - testpackage
+  #      - testifylint
+
+  exclusions:
+    rules:
+      - path: _test\.go
+        linters:
+          - lll
+          - wsl_v5
+          - errcheck
+          - errchkjson
+          - goconst
+          - varnamelen
+          - paralleltest
+          - ineffassign
+          - godot
+          - gochecknoglobals
+          - containedctx
+          - err113
+          - funlen
+          - staticcheck
+          - dupl
+          - forbidigo
+
+      - linters:
+          - varnamelen
+        text: "variable name 'ok'"
+
+      # Exclude specific paths from linting
+      - path: (third_party|builtin|examples)/
+        linters:
+          - all
+
+    # Default: lax
+    generated: lax
+    # Log a warning if an exclusion rule is unused.
+    # Default: false
+    warn-unused: true
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+
+  settings:
+    cyclop:
+      max-complexity: 9
+    wsl_v5:
+      allow-first-in-block: true
+      allow-whole-block: false
+      branch-max-lines: 2
+    revive:
+      rules:
+        - name: argument-limit
+          arguments: [4]
+
+output:
+  formats:
+    tab:
+      print-linter-name: true
+      colors: false
+
+  path-prefix: ""
+  sort-order:
+    - linter
+    - severity
+    - file # filepath, line, and column.
+
+  # Show statistics per linter.
+  show-stats: false
+
+run:
+  timeout: 5m
+  relative-path-mode: gomod
+  issues-exit-code: 1
+  # Include test files or not.
+  tests: true
+  build-tags:
+    - integration
+    - unit
+
+  allow-parallel-runners: true
+  concurrency: 4
+  go: "1.24"

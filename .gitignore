@@ -1,0 +1,17 @@
+# MacOS
+.DS_Store
+
+# IntelliJ
+.idea/
+
+*.out
+
+# VSCode
+.vscode/
+
+internal/mocks/*
+
+#binary
+bin/
+
+*Icon
