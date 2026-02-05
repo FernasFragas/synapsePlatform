@@ -5,7 +5,9 @@
 .idea/
 
 *.out
-.db
+
+# database file
+*.db
 
 # VSCode
 .vscode/
