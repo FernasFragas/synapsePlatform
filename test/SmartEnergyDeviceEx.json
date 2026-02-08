@@ -1,0 +1,11 @@
+{
+  "device_id": "ev-charger-0021",
+  "type": "ev_charger",
+  "timestamp": "2024-01-05T14:35:22Z",
+  "metrics": {
+    "power_kw": 6.2,
+    "voltage": 230.0,
+    "current": 27.0,
+    "session_kwh": 12.4
+  }
+}

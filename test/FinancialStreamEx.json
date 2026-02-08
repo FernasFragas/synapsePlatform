@@ -1,0 +1,11 @@
+{
+  "device_id": "portfolio-stream-894",
+  "type": "financial_stream",
+  "timestamp": "2024-01-05T14:35:22Z",
+  "metrics": {
+    "account_balance_eur": 35210.75,
+    "daily_pnl_percent": -0.21,
+    "volatility_30d": 0.35,
+    "holdings_count": 6
+  }
+}

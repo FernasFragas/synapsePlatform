@@ -1,0 +1,10 @@
+{
+  "device_id": "grid-meter-991",
+  "type": "power_meter",
+  "timestamp": "2024-01-05T14:35:22Z",
+  "metrics": {
+    "energy_import_kwh": 1720.0,
+    "energy_export_kwh": 460.5,
+    "frequency_hz": 49.98
+  }
+}
