@@ -12,7 +12,7 @@ CREATE TABLE IF NOT EXISTS events (
     
     -- Timestamps
     occurred_at TIMESTAMP NOT NULL,      -- ISO8601: when event happened
-    ingested_at TIMESTAMP NOT NULL DEFAULT NOW(),      -- ISO8601: when was received it
+    ingested_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,      -- ISO8601: when was received it
     
     -- Provenance & versioning
     source TEXT NOT NULL,           -- NEW: e.g., "iot-gateway", "payment-processor"

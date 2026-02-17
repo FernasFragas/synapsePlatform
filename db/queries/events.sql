@@ -1,11 +1,19 @@
 -- name: CreateEvent :one
 INSERT INTO events (
-    event_id, domain, event_type, 
-    entity_id, entity_type, 
-    occurred_at, ingested_at, 
-    source, schema_version, data, metadata
+    event_id,
+    domain,
+    event_type,
+    entity_id,
+    entity_type,
+    occurred_at,
+    ingested_at,
+    source,
+    schema_version,
+    data,
+    metadata
 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-RETURNING *;
+RETURNING event_id, domain, event_type, entity_id, entity_type,
+    occurred_at, ingested_at, source, schema_version, data, metadata;
 
 -- name: GetEventsByDomain :many
 SELECT * FROM events 
@@ -20,4 +28,4 @@ ORDER BY ingested_at DESC
 LIMIT ?;
 
 -- name: DeleteEvent :exec
-DELETE FROM events WHERE id = ?;
+DELETE FROM events WHERE event_id = ?;
