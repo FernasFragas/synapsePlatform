@@ -52,7 +52,7 @@ func (db *DB) runMigrations() error {
 	return nil
 }
 
-func (db *DB) StoreData(ctx context.Context, data *ingestor.NormalizedData) (generated.Event, error) {
+func (db *DB) StoreData(ctx context.Context, data *ingestor.BaseEvent[ingestor.NormalizedData]) (generated.Event, error) {
 	// Serialize the data payload to JSON
 	dataJSON, err := json.Marshal(data)
 	if err != nil {
