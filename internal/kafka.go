@@ -15,7 +15,6 @@ type KafkaConsumer struct {
 	config StreamingConfigs
 }
 
-
 // NewConsumer creates a new Kafka consumer
 func NewConsumer(cfg StreamingConfigs) *KafkaConsumer {
 	return &KafkaConsumer{

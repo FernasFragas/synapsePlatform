@@ -5,6 +5,7 @@ go 1.25
 require (
 	github.com/go-playground/validator/v10 v10.30.1
 	github.com/google/uuid v1.6.0
+	github.com/pkg/errors v0.9.1
 	github.com/segmentio/kafka-go v0.4.50
 	modernc.org/sqlite v1.44.3
 )

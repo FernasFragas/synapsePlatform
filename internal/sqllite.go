@@ -52,30 +52,44 @@ func (db *DB) runMigrations() error {
 	return nil
 }
 
-func (db *DB) StoreData(ctx context.Context, data *ingestor.BaseEvent[ingestor.NormalizedData]) (generated.Event, error) {
+func (db *DB) StoreData(ctx context.Context, data *ingestor.BaseEvent) (generated.Event, error) {
 	// Serialize the data payload to JSON
-	dataJSON, err := json.Marshal(data)
+	dataJSON, err := json.Marshal(data.Data)
 	if err != nil {
-		// todo
+		return generated.Event{}, ingestor.FieldError{
+			TypeOfError:            ingestor.ErrStoringMsg,
+			ErrorOccurredBecauseOf: ingestor.ErrFailedToStoreMsg,
+			Field:                  "msg",
+			Expected:               "DeviceMessage",
+			Got:                    dataJSON,
+			Err:                    err,
+		}
 	}
 
 	value := *data
 
 	savedEvent, err := db.Queries.CreateEvent(ctx, generated.CreateEventParams{
-		EventID:       value.Value().EventID.String(),
-		Domain:        value.Value().Domain,
-		EventType:     value.Value().EventType,
-		EntityID:      value.Value().EntityID,
-		EntityType:    value.Value().EntityType,
-		OccurredAt:    value.Value().OccurredAt,
-		IngestedAt:    value.Value().IngestedAt,
-		Source:        value.Value().Source,
-		SchemaVersion: value.Value().SchemaVersion,
+		EventID:       value.EventID.String(),
+		Domain:        value.Domain,
+		EventType:     value.EventType,
+		EntityID:      value.EntityID,
+		EntityType:    value.EntityType,
+		OccurredAt:    value.OccurredAt,
+		IngestedAt:    value.IngestedAt,
+		Source:        value.Source,
+		SchemaVersion: value.SchemaVersion,
 		Data:          string(dataJSON),
 		Metadata:      sql.NullString{},
 	})
 	if err != nil {
-		// todo
+		return generated.Event{}, ingestor.FieldError{
+			TypeOfError:            ingestor.ErrStoringMsg,
+			ErrorOccurredBecauseOf: ingestor.ErrFailedToStoreMsg,
+			Field:                  "msg",
+			Expected:               "DeviceMessage",
+			Got:                    dataJSON,
+			Err:                    err,
+		}
 	}
 
 	return savedEvent, nil
