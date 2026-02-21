@@ -1,4 +1,4 @@
-package internal
+package sqllite
 
 import (
 	"context"
@@ -17,7 +17,7 @@ type DB struct {
 	Queries *generated.Queries
 }
 
-func Open(dbPath string) (*DB, error) {
+func NewRepo(dbPath string) (*DB, error) {
 	db, err := sql.Open("sqlite", dbPath)
 	if err != nil {
 		return nil, err
@@ -52,11 +52,11 @@ func (db *DB) runMigrations() error {
 	return nil
 }
 
-func (db *DB) StoreData(ctx context.Context, data *ingestor.BaseEvent) (generated.Event, error) {
+func (db *DB) StoreData(ctx context.Context, data *ingestor.BaseEvent) error {
 	// Serialize the data payload to JSON
 	dataJSON, err := json.Marshal(data.Data)
 	if err != nil {
-		return generated.Event{}, ingestor.FieldError{
+		return ingestor.ProcessorError{
 			TypeOfError:            ingestor.ErrStoringMsg,
 			ErrorOccurredBecauseOf: ingestor.ErrFailedToStoreMsg,
 			Field:                  "msg",
@@ -68,7 +68,7 @@ func (db *DB) StoreData(ctx context.Context, data *ingestor.BaseEvent) (generate
 
 	value := *data
 
-	savedEvent, err := db.Queries.CreateEvent(ctx, generated.CreateEventParams{
+	_, err = db.Queries.CreateEvent(ctx, generated.CreateEventParams{
 		EventID:       value.EventID.String(),
 		Domain:        value.Domain,
 		EventType:     value.EventType,
@@ -82,7 +82,7 @@ func (db *DB) StoreData(ctx context.Context, data *ingestor.BaseEvent) (generate
 		Metadata:      sql.NullString{},
 	})
 	if err != nil {
-		return generated.Event{}, ingestor.FieldError{
+		return ingestor.ProcessorError{
 			TypeOfError:            ingestor.ErrStoringMsg,
 			ErrorOccurredBecauseOf: ingestor.ErrFailedToStoreMsg,
 			Field:                  "msg",
@@ -92,6 +92,6 @@ func (db *DB) StoreData(ctx context.Context, data *ingestor.BaseEvent) (generate
 		}
 	}
 
-	return savedEvent, nil
+	return nil
 
 }
