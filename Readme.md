@@ -23,3 +23,5 @@ Synapse Platform ingests heterogeneous event streams from multiple sources, tran
 - **Generic Architecture** - Leverages Go 1.18+ generics for type-safe event structures
 - **Multi-Domain Support** - Handles energy readings, financial transactions, and latency samples
 - **Pluggable Components** - Interface-based design for message pollers and storage backends
+
+License: PolyForm Noncommercial 1.0.0 (PolyForm-Noncommercial-1.0.0). See LICENSE.
