@@ -15,6 +15,15 @@ type KafkaConsumer struct {
 	config StreamingConfigs
 }
 
+// StreamingConfigs holds configuration for message broker connections.
+type StreamingConfigs struct {
+	Brokers  []string
+	Topics   []string
+	GroupID  string
+	MinBytes int
+	MaxBytes int
+}
+
 // NewConsumer creates a new Kafka consumer
 func NewConsumer(cfg StreamingConfigs) *KafkaConsumer {
 	return &KafkaConsumer{
