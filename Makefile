@@ -35,6 +35,11 @@ lint: dep-lint ## Lint with golangci-lint
 fmt:
 	go fmt ./...
 
+generate:
+	rm -rf ./internal/utilstest/mocksgen
+	go install go.uber.org/mock/mockgen@latest
+	go generate -x ./internal/...
+
 ## test: Run tests
 test:
 	go test -v ./...

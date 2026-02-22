@@ -1,3 +1,4 @@
+//go:generate mockgen -source=$GOFILE -destination=../utilstest/mocksgen/sqllite/mocked_$GOFILE
 package sqllite
 
 import (
@@ -7,23 +8,21 @@ import (
 	"os"
 	"synapsePlatform/internal/ingestor"
 
-	_ "modernc.org/sqlite" // Import SQLite driver
-
 	"synapsePlatform/internal/sqlc/generated"
 )
 
-type DB struct {
+type Repo struct {
 	Db      *sql.DB
 	Queries *generated.Queries
 }
 
-func NewRepo(dbPath string) (*DB, error) {
+func NewRepo(dbPath string) (*Repo, error) {
 	db, err := sql.Open("sqlite", dbPath)
 	if err != nil {
 		return nil, err
 	}
 
-	var database = DB{
+	var database = Repo{
 		Db: db,
 	}
 
@@ -38,7 +37,7 @@ func NewRepo(dbPath string) (*DB, error) {
 	return &database, nil
 }
 
-func (db *DB) runMigrations() error {
+func (db *Repo) runMigrations() error {
 	schema, err := os.ReadFile("db/summary.sql")
 	if err != nil {
 		return err
@@ -52,7 +51,7 @@ func (db *DB) runMigrations() error {
 	return nil
 }
 
-func (db *DB) StoreData(ctx context.Context, data *ingestor.BaseEvent) error {
+func (db *Repo) StoreData(ctx context.Context, data *ingestor.BaseEvent) error {
 	// Serialize the data payload to JSON
 	dataJSON, err := json.Marshal(data.Data)
 	if err != nil {

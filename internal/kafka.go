@@ -1,3 +1,4 @@
+//go:generate mockgen -source=$GOFILE -destination=../internal/utilstest/mocksgen/mocked_$GOFILE
 package internal
 
 import (
@@ -13,6 +14,10 @@ import (
 type KafkaConsumer struct {
 	reader *kafka.Reader
 	config StreamingConfigs
+}
+
+type KafkaClient interface {
+	ReadMessage(ctx context.Context) (kafka.Message, error)
 }
 
 // StreamingConfigs holds configuration for message broker connections.
