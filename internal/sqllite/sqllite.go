@@ -37,20 +37,6 @@ func NewRepo(dbPath string) (*Repo, error) {
 	return &database, nil
 }
 
-func (db *Repo) runMigrations() error {
-	schema, err := os.ReadFile("db/summary.sql")
-	if err != nil {
-		return err
-	}
-
-	_, err = db.Db.Exec(string(schema))
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
 func (db *Repo) StoreData(ctx context.Context, data *ingestor.BaseEvent) error {
 	// Serialize the data payload to JSON
 	dataJSON, err := json.Marshal(data.Data)
@@ -93,4 +79,22 @@ func (db *Repo) StoreData(ctx context.Context, data *ingestor.BaseEvent) error {
 
 	return nil
 
+}
+
+func (db *Repo) runMigrations() error {
+	schema, err := os.ReadFile("db/summary.sql")
+	if err != nil {
+		return err
+	}
+
+	_, err = db.Db.Exec(string(schema))
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (db *Repo) Close() error {
+	return db.Db.Close()
 }
