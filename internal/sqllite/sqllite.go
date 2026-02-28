@@ -4,12 +4,17 @@ package sqllite
 import (
 	"context"
 	"database/sql"
+	_ "embed"
 	"encoding/json"
-	"os"
-	"synapsePlatform/internal/ingestor"
 
+	"synapsePlatform/internal/ingestor"
 	"synapsePlatform/internal/sqlc/generated"
+
+	_ "modernc.org/sqlite" //nolint:depguard
 )
+
+//go:embed summary.sql
+var schema string
 
 type Repo struct {
 	Db      *sql.DB
@@ -82,12 +87,7 @@ func (db *Repo) StoreData(ctx context.Context, data *ingestor.BaseEvent) error {
 }
 
 func (db *Repo) runMigrations() error {
-	schema, err := os.ReadFile("db/summary.sql")
-	if err != nil {
-		return err
-	}
-
-	_, err = db.Db.Exec(string(schema))
+	_, err := db.Db.Exec(schema)
 	if err != nil {
 		return err
 	}

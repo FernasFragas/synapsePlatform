@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"log"
 	"log/slog"
 	"os"
@@ -58,7 +59,12 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to open database: %v", err)
 	}
-	defer db.Db.Close()
+	defer func(Db *sql.DB) {
+		err := Db.Close()
+		if err != nil {
+			log.Fatalf("Failed to close DB because: %v", err)
+		}
+	}(db.Db)
 
 	storer := synnapLog.NewMessageStorer(logger, db)
 
