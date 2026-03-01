@@ -12,12 +12,8 @@ import (
 
 // KafkaConsumer handles consuming messages from Kafka
 type KafkaConsumer struct {
-	reader *kafka.Reader
+	reader []*kafka.Reader
 	config StreamingConfigs
-}
-
-type KafkaClient interface {
-	ReadMessage(ctx context.Context) (kafka.Message, error)
 }
 
 // StreamingConfigs holds configuration for message broker connections.
@@ -33,6 +29,7 @@ type StreamingConfigs struct {
 func NewConsumer(cfg StreamingConfigs) *KafkaConsumer {
 	return &KafkaConsumer{
 		config: cfg,
+		reader: make([]*kafka.Reader, 0),
 	}
 }
 
@@ -42,24 +39,31 @@ func (c *KafkaConsumer) PollMessage(ctx context.Context) (*ingestor.DeviceMessag
 	case <-ctx.Done():
 		return nil, nil
 	default:
-		kafkaMsg, err := c.reader.ReadMessage(ctx)
-		if err != nil {
-			// todo
-		}
+		for _, reader := range c.reader {
+			kafkaMsg, err := reader.ReadMessage(ctx)
+			if err != nil {
+				return nil, err
+			}
 
-		var deviceMessage ingestor.DeviceMessage
-		if err := json.Unmarshal(kafkaMsg.Value, &deviceMessage); err != nil {
-			// Todo
-		}
+			var deviceMessage ingestor.DeviceMessage
+			err = json.Unmarshal(kafkaMsg.Value, &deviceMessage)
+			if err != nil {
+				return nil, err
+			}
 
-		return &deviceMessage, nil
+			return &deviceMessage, nil
+		}
 	}
+
+	return nil, nil
 }
 
 // Close gracefully shuts down all reader
 func (c *KafkaConsumer) Close() error {
-	if err := c.reader.Close(); err != nil {
-		return err
+	for _, reader := range c.reader {
+		if err := reader.Close(); err != nil {
+			return err
+		}
 	}
 
 	return nil
@@ -76,7 +80,7 @@ func (c *KafkaConsumer) Subscribe(topic string) error {
 		CommitInterval: time.Second, // tune
 	})
 
-	c.reader = reader
+	c.reader = append(c.reader, reader)
 
 	return nil
 }

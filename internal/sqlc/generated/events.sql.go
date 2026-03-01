@@ -83,6 +83,29 @@ func (q *Queries) DeleteEvent(ctx context.Context, eventID string) error {
 	return err
 }
 
+const getEvent = `-- name: GetEvent :one
+SELECT event_id, domain, event_type, entity_id, entity_type, occurred_at, ingested_at, source, schema_version, data, metadata FROM events WHERE event_id = ? LIMIT 1
+`
+
+func (q *Queries) GetEvent(ctx context.Context, eventID string) (Event, error) {
+	row := q.db.QueryRowContext(ctx, getEvent, eventID)
+	var i Event
+	err := row.Scan(
+		&i.EventID,
+		&i.Domain,
+		&i.EventType,
+		&i.EntityID,
+		&i.EntityType,
+		&i.OccurredAt,
+		&i.IngestedAt,
+		&i.Source,
+		&i.SchemaVersion,
+		&i.Data,
+		&i.Metadata,
+	)
+	return i, err
+}
+
 const getEventsByDomain = `-- name: GetEventsByDomain :many
 SELECT event_id, domain, event_type, entity_id, entity_type, occurred_at, ingested_at, source, schema_version, data, metadata FROM events 
 WHERE domain = ? 
@@ -144,6 +167,45 @@ type GetEventsBySourceParams struct {
 
 func (q *Queries) GetEventsBySource(ctx context.Context, arg GetEventsBySourceParams) ([]Event, error) {
 	rows, err := q.db.QueryContext(ctx, getEventsBySource, arg.Source, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Event
+	for rows.Next() {
+		var i Event
+		if err := rows.Scan(
+			&i.EventID,
+			&i.Domain,
+			&i.EventType,
+			&i.EntityID,
+			&i.EntityType,
+			&i.OccurredAt,
+			&i.IngestedAt,
+			&i.Source,
+			&i.SchemaVersion,
+			&i.Data,
+			&i.Metadata,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listEvents = `-- name: ListEvents :many
+SELECT event_id, domain, event_type, entity_id, entity_type, occurred_at, ingested_at, source, schema_version, data, metadata FROM events ORDER BY ingested_at DESC
+`
+
+func (q *Queries) ListEvents(ctx context.Context) ([]Event, error) {
+	rows, err := q.db.QueryContext(ctx, listEvents)
 	if err != nil {
 		return nil, err
 	}

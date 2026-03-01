@@ -29,3 +29,9 @@ LIMIT ?;
 
 -- name: DeleteEvent :exec
 DELETE FROM events WHERE event_id = ?;
+
+-- name: GetEvent :one
+SELECT * FROM events WHERE event_id = ? LIMIT 1;
+
+-- name: ListEvents :many
+SELECT * FROM events ORDER BY ingested_at DESC;

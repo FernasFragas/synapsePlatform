@@ -3,7 +3,7 @@ version: 2
 sql:
   - engine: "sqlite"
     queries: "./db/queries"
-    schema: "./db/summary.sql"
+    schema: "./internal/sqllite/summary.sql"
     gen:
       go:
         out: "internal/sqlc/generated"

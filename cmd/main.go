@@ -78,7 +78,7 @@ func main() {
 	err = ingestor.New(ingestor.Config{CompatibleDataTypes: domains}, processor, storer, transformer).
 		Ingest(ctx)
 	if err != nil {
-		logger.Error("Ingest failed and exit because of, %s", err)
+		logger.Error("Ingest failed and exit", "error", err)
 	}
 
 	//onShutdown(func() {
@@ -97,7 +97,7 @@ func onShutdown(fn func(), log *slog.Logger) {
 	go func() {
 		s := <-ch
 
-		log.Info("got a exit signal %s", s.String())
+		log.Info("got a exit signal", "signal", s.String())
 
 		fn()
 	}()
