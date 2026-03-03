@@ -6,10 +6,12 @@ import (
 	"database/sql"
 	_ "embed"
 	"encoding/json"
+	"errors"
 
 	"synapsePlatform/internal/ingestor"
 	"synapsePlatform/internal/sqlc/generated"
 
+	"github.com/google/uuid"
 	_ "modernc.org/sqlite" //nolint:depguard
 )
 
@@ -43,7 +45,6 @@ func NewRepo(dbPath string) (*Repo, error) {
 }
 
 func (db *Repo) StoreData(ctx context.Context, data *ingestor.BaseEvent) error {
-	// Serialize the data payload to JSON
 	dataJSON, err := json.Marshal(data.Data)
 	if err != nil {
 		return ingestor.ProcessorError{
@@ -86,6 +87,40 @@ func (db *Repo) StoreData(ctx context.Context, data *ingestor.BaseEvent) error {
 
 }
 
+func (db *Repo) GetEvent(ctx context.Context, eventID string) (*ingestor.BaseEvent, error) {
+	row, err := db.Queries.GetEvent(ctx, eventID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ingestor.ErrEventNotFound
+	}
+
+	if err != nil {
+		return nil, err
+	}
+
+	return toBaseEvent(row)
+}
+
+func (db *Repo) ListEvents(ctx context.Context) ([]*ingestor.BaseEvent, error) {
+	rows, err := db.Queries.ListEvents(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	events := make([]*ingestor.BaseEvent, len(rows))
+	for i, row := range rows {
+		events[i], err = toBaseEvent(row)
+		if err != nil {   // ← check error, don't blindly return after first iteration
+			return nil, err
+		}
+	}
+
+	return events, nil
+}
+
+func (db *Repo) Close() error {
+	return db.Db.Close()
+}
+
 func (db *Repo) runMigrations() error {
 	_, err := db.Db.Exec(schema)
 	if err != nil {
@@ -95,6 +130,63 @@ func (db *Repo) runMigrations() error {
 	return nil
 }
 
-func (db *Repo) Close() error {
-	return db.Db.Close()
+func toBaseEvent(row generated.Event) (*ingestor.BaseEvent, error) {
+	dataValue, err := toBaseEventValue(row.Data, ingestor.ParseDataType(row.EventType))
+	if err != nil {
+		return nil, err
+	}
+
+	return &ingestor.BaseEvent{
+		EventID:       uuid.MustParse(row.EventID),
+		Domain:        row.Domain,
+		EventType:     row.EventType,
+		EntityID:      row.EntityID,
+		EntityType:    row.EntityType,
+		OccurredAt:    row.OccurredAt,
+		IngestedAt:    row.IngestedAt,
+		Source:        row.Source,
+		SchemaVersion: row.SchemaVersion,
+		Data:          dataValue,
+	}, nil
+}
+
+func toBaseEventValue(data string, eventType ingestor.DataTypes) (ingestor.BaseEventValue, error) {
+	switch eventType {
+	case ingestor.DataTypeFinancialStream:
+		var financialTransaction ingestor.FinancialTransaction
+
+		err := json.Unmarshal([]byte(data), &financialTransaction)
+		if err != nil {
+			return nil, err
+		}
+
+		return &financialTransaction, nil
+	case ingestor.DataTypeEnergyMeter:
+		var energyReading ingestor.EnergyReading
+
+		err := json.Unmarshal([]byte(data), &energyReading)
+		if err != nil {
+			return nil, err
+		}
+
+		return &energyReading, nil
+	case ingestor.DataTypeEnvironmentalSensor:
+		var environmentalSensor ingestor.EnvironmentalSensor
+
+		err := json.Unmarshal([]byte(data), &environmentalSensor)
+		if err != nil {
+			return nil, err
+		}
+
+		return &environmentalSensor, nil
+	default:
+		var unknownEvent ingestor.UnknownEvent
+
+		err := json.Unmarshal([]byte(data), &unknownEvent)
+		if err != nil {
+			return nil, err
+		}
+
+		return &unknownEvent, nil
+	}
 }
