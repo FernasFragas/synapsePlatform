@@ -1,4 +1,3 @@
-//go:generate mockgen -source=$GOFILE -destination=../utilstest/mocksgen/log/mocked_$GOFILE
 package log
 
 import (
@@ -12,45 +11,51 @@ type MessagePoller struct {
 	poller ingestor.MessagePoller
 }
 
-func NewMessagePoller(log *slog.Logger, poller ingestor.MessagePoller) MessagePoller {
-	return MessagePoller{
+func NewMessagePoller(log *slog.Logger, poller ingestor.MessagePoller) *MessagePoller {
+	return &MessagePoller{
 		logger: log,
 		poller: poller,
 	}
 }
 
 // Subscribe logs the registers topics/queues to consume from.
-func (mp MessagePoller) Subscribe(topics string) error {
+func (mp *MessagePoller) Subscribe(topics string) error {
 	err := mp.poller.Subscribe(topics)
 	if err != nil {
-		mp.logger.Error("Was not able to subscribe", "topic", topics, "error", err)
+		mp.logger.Error("failed to subscribe", "topic", topics, "error", err)
+
+		return err
 	}
 
-	mp.logger.Info("Subscribed to topic", "topic", topics)
+	mp.logger.Info("subscribed to topic", "topic", topics)
 
-	return err
+	return nil
 }
 
 // PollMessage logs the consuming messages, calling handler for each.
-func (mp MessagePoller) PollMessage(ctx context.Context) (*ingestor.DeviceMessage, error) {
+func (mp *MessagePoller) PollMessage(ctx context.Context) (*ingestor.DeviceMessage, error) {
 	msg, err := mp.poller.PollMessage(ctx)
 	if err != nil {
-		mp.logger.Error("Was not able to poll the message from", "message", msg, "error", err)
+		mp.logger.Error("failed to poll message", "message", msg, "error", err)
+
+		return msg, err
 	}
 
-	mp.logger.Info("Polled message", "message", msg)
+	mp.logger.Info("polled message", "message", msg)
 
-	return msg, err
+	return msg, nil
 }
 
 // Close logs gracefully shuts down the consumer.
-func (mp MessagePoller) Close() error {
+func (mp *MessagePoller) Close() error {
 	err := mp.poller.Close()
 	if err != nil {
-		mp.logger.Error("Was not able to close connection from queue", "error", err)
+		mp.logger.Error("failed to close connection", "error", err)
+
+		return err
 	}
 
-	mp.logger.Info("Closed connection from queue")
+	mp.logger.Info("closed connection")
 
-	return err
+	return nil
 }

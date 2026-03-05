@@ -1,4 +1,3 @@
-//go:generate mockgen -source=$GOFILE -destination=../utilstest/mocksgen/log/mocked_$GOFILE
 package log
 
 import (
@@ -23,12 +22,18 @@ func NewIngestorProcessor(logger *slog.Logger, processor ingestor.DataProcessor)
 func (il *IngestorProcessor) ProcessData(ctx context.Context) (*ingestor.DeviceMessage, error) {
 	msg, err := il.processor.ProcessData(ctx)
 	if err != nil {
-		il.logger.Error("failed to transform message", "msg", msg, "error", err, "detailed err", err.Error())
+		il.logger.Error("failed to process message", "msg", msg, "error", err)
 
 		return nil, err
 	}
 
+	if msg == nil {
+		il.logger.Warn("msg received from processing is empty", "msg", msg)
+
+		return msg, nil
+	}
+
 	il.logger.Info("message processed", "device_id", msg.DeviceID, "type", msg.Type, "message", msg)
 
-	return msg, err
+	return msg, nil
 }

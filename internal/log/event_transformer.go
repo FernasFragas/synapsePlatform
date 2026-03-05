@@ -1,4 +1,3 @@
-//go:generate mockgen -source=$GOFILE -destination=../utilstest/mocksgen/log/mocked_$GOFILE
 package log
 
 import (
@@ -21,12 +20,12 @@ func NewEventTransformer(logger *slog.Logger, transformer ingestor.Transformer) 
 func (e *EventTransformer) Transform(msg *ingestor.DeviceMessage) (*ingestor.BaseEvent, error) {
 	transformed, err := e.transformer.Transform(msg)
 	if err != nil {
-		e.logger.Error("failed to transform message", "msg", msg, "error", err, "detailed err", err.Error())
+		e.logger.Error("failed to transform message", "msg", msg, "error", err)
 
 		return nil, err
 	}
 
-	e.logger.Info("message processed", "device_id", msg.DeviceID, "type", msg.Type, "transformed message", transformed)
+	e.logger.Info("message transformed", "device_id", msg.DeviceID, "type", msg.Type, "transformed message", transformed)
 
-	return transformed, err
+	return transformed, nil
 }
