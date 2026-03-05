@@ -5,7 +5,7 @@
 ![Docker](https://img.shields.io/badge/Docker-2CA5E0?style=for-the-badge&logo=docker&logoColor=white)
 ![Make](https://img.shields.io/badge/Make-427819?style=for-the-badge&logo=gnu&logoColor=white)
 
-A high-performance event ingestion and processing platform built in Go. Synapse consumes heterogeneous device and service data from Kafka, normalizes it into strongly-typed domain events, persists them to SQLite, and exposes them via a JWT-authenticated HTTP API.
+A high-performance event ingestion and processing platform built in Go. Synapse consumes device and service data from Kafka, normalizes it into strongly-typed domain events, persists them to SQLite, and exposes them via a JWT-authenticated HTTP API.
 
 ## What It Does
 
