@@ -36,12 +36,21 @@ func (mp *MessagePoller) Subscribe(topics string) error {
 func (mp *MessagePoller) PollMessage(ctx context.Context) (*ingestor.DeviceMessage, error) {
 	msg, err := mp.poller.PollMessage(ctx)
 	if err != nil {
-		mp.logger.Error("failed to poll message", "message", msg, "error", err)
+		mp.logger.Error("failed to poll message",
+			"device_id", msg.DeviceID,
+			"type",      msg.Type,
+			"timestamp", msg.Timestamp.String(),
+			"error", err,
+		)
 
 		return msg, err
 	}
 
-	mp.logger.Info("polled message", "message", msg)
+	mp.logger.Info("polled message",
+		"device_id", msg.DeviceID,
+		"type",      msg.Type,
+		"timestamp", msg.Timestamp.String(),
+	)
 
 	return msg, nil
 }

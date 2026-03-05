@@ -20,12 +20,22 @@ func NewEventTransformer(logger *slog.Logger, transformer ingestor.Transformer) 
 func (e *EventTransformer) Transform(msg *ingestor.DeviceMessage) (*ingestor.BaseEvent, error) {
 	transformed, err := e.transformer.Transform(msg)
 	if err != nil {
-		e.logger.Error("failed to transform message", "msg", msg, "error", err)
+		e.logger.Error("failed to transform message",
+			"device_id", msg.DeviceID,
+			"type",      msg.Type,
+			"error",     err,
+		)
 
 		return nil, err
 	}
 
-	e.logger.Info("message transformed", "device_id", msg.DeviceID, "type", msg.Type, "transformed message", transformed)
+	e.logger.Info("message transformed",
+		"device_id",  msg.DeviceID,
+		"type",       msg.Type,
+		"event_id",   transformed.EventID,
+		"domain",     transformed.Domain,
+		"event_type", transformed.EventType,
+	)
 
 	return transformed, nil
 }

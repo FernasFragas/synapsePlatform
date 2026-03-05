@@ -2,6 +2,8 @@ package ingestor
 
 import (
 	"encoding/json"
+	"log/slog"
+	"strconv"
 	"strings"
 	"time"
 
@@ -104,6 +106,22 @@ func (e *BaseEvent) Normalize() error {
 	return e.Data.Normalize()
 }
 
+// In internal/ingestor/normalized_message.go
+
+func (e *BaseEvent) LogValue() slog.Value {
+	if e == nil {
+		return slog.StringValue("<nil>")
+	}
+
+	return slog.GroupValue(
+		slog.String("event_id", e.EventID.String()),
+		slog.String("domain", e.Domain),
+		slog.String("event_type", e.EventType),
+		slog.String("entity_type", e.EntityType),
+		slog.String("schema_version", e.SchemaVersion),
+	)
+}
+
 func (er *EnergyReading) Validate() error {
 	err := validate.Struct(er)
 	if err != nil {
@@ -172,6 +190,14 @@ func (ft *FinancialTransaction) Normalize() error {
 	ft.Merchant = strings.TrimSpace(ft.Merchant)
 
 	return nil
+}
+
+func (ft *FinancialTransaction) LogValue() slog.Value {
+	return slog.GroupValue(
+		slog.String("currency", ft.Currency),
+		slog.String("status", ft.Status),
+		slog.String("amount", strconv.FormatInt(ft.AmountMinor, 10)),
+	)
 }
 
 func (es *EnvironmentalSensor) Validate() error {

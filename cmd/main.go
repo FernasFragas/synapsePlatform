@@ -33,7 +33,12 @@ func main() {
 	}
 
 	// create logger
-	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	baseHandler := slog.NewJSONHandler(os.Stdout, nil)
+	safeHandler := synnapLog.NewRedactingHandler(baseHandler, synnapLog.Options{
+		RedactKeys:    []string{"token", "password", "secret", "authorization"},
+		MaxValueBytes: 512,
+	})
+	logger := slog.New(safeHandler)
 
 	var (
 		processor   ingestor.DataProcessor

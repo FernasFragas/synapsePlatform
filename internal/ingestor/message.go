@@ -1,6 +1,7 @@
 package ingestor
 
 import (
+	"log/slog"
 	"time"
 )
 
@@ -25,4 +26,16 @@ func (m *DeviceMessage) ValidateRawMessage() error {
 	}
 
 	return nil
+}
+
+func (m *DeviceMessage) LogValue() slog.Value {
+	if m == nil {
+		return slog.StringValue("<nil>")
+	}
+
+	return slog.GroupValue(
+		slog.String("device_id", m.DeviceID),
+		slog.String("type", m.Type),
+		slog.Time("timestamp", m.Timestamp),
+	)
 }
