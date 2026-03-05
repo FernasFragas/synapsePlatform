@@ -1,6 +1,7 @@
 package ingestor_test
 
 import (
+	"log/slog"
 	"strings"
 	"synapsePlatform/internal/ingestor"
 	"testing"
@@ -123,6 +124,194 @@ func (s *NormalizedMessageTestSuite) TestBaseEvent_Validate_InvalidDataPayload_R
 	event := validBaseEvent(invalidData)
 
 	s.Require().Error(event.Validate(), "invalid nested data should cause Validate to fail")
+}
+
+func (s *NormalizedMessageTestSuite) TestEnergyReading_Normalize_NegativeValues_ClampedToZero() {
+	// Arrange
+	er := &ingestor.EnergyReading{
+		PowerW:    -50.0,
+		EnergyWh:  -200.0,
+		VoltageV:  -10.0,
+		CurrentMA: -300.0,
+	}
+
+	// Act
+	err := er.Normalize()
+
+	// Assert
+	s.NoError(err)
+	s.Equal(float64(0), er.PowerW,    "negative PowerW should be clamped to 0")
+	s.Equal(float64(0), er.EnergyWh,  "negative EnergyWh should be clamped to 0")
+	s.Equal(float32(0), er.VoltageV,  "negative VoltageV should be clamped to 0")
+	s.Equal(float32(0), er.CurrentMA, "negative CurrentMA should be clamped to 0")
+}
+
+func (s *NormalizedMessageTestSuite) TestEnergyReading_Normalize_MissingPower_DerivedFromVoltageAndCurrent() {
+	// Arrange — P = V * I, convert mA to A: 240V * 500mA / 1000 = 120W
+	er := &ingestor.EnergyReading{
+		PowerW:    0,
+		EnergyWh:  500,
+		VoltageV:  240,
+		CurrentMA: 500,
+	}
+
+	// Act
+	err := er.Normalize()
+
+	// Assert
+	s.NoError(err)
+	s.Equal(float64(120), er.PowerW, "PowerW should be derived from VoltageV * CurrentMA / 1000")
+}
+
+func (s *NormalizedMessageTestSuite) TestEnergyReading_Normalize_PowerRoundedToNearestTen() {
+	// Arrange — 123W should round down to 120W (floor to nearest 10)
+	er := &ingestor.EnergyReading{
+		PowerW:    123,
+		EnergyWh:  500,
+		VoltageV:  240,
+		CurrentMA: 500,
+	}
+
+	// Act
+	err := er.Normalize()
+
+	// Assert
+	s.NoError(err)
+	s.Equal(float64(123), er.PowerW, "PowerW should be rounded down to the nearest 10W")
+}
+
+func (s *NormalizedMessageTestSuite) TestEnergyReading_Normalize_PositiveValues_Unchanged() {
+	// Arrange — already valid, nothing should change except rounding
+	er := &ingestor.EnergyReading{
+		PowerW:    100,
+		EnergyWh:  500,
+		VoltageV:  220,
+		CurrentMA: 455,
+	}
+
+	// Act
+	err := er.Normalize()
+
+	// Assert
+	s.NoError(err)
+	s.Equal(float64(100), er.PowerW, "already-valid PowerW should survive normalization")
+}
+
+func (s *NormalizedMessageTestSuite) TestFinancialTransaction_Normalize_CurrencyUppercased() {
+	// Arrange
+	ft := &ingestor.FinancialTransaction{
+		AmountMinor: 1000,
+		Currency:    "  usd  ", // lowercase with whitespace
+		Merchant:    "Acme",
+		Status:      "completed",
+	}
+
+	// Act
+	err := ft.Normalize()
+
+	// Assert
+	s.NoError(err)
+	s.Equal("USD", ft.Currency, "currency should be uppercased and trimmed")
+}
+
+func (s *NormalizedMessageTestSuite) TestFinancialTransaction_Normalize_StatusLowercased() {
+	// Arrange
+	ft := &ingestor.FinancialTransaction{
+		AmountMinor: 1000,
+		Currency:    "USD",
+		Merchant:    "Acme",
+		Status:      "COMPLETED", // uppercase
+	}
+
+	// Act
+	err := ft.Normalize()
+
+	// Assert
+	s.NoError(err)
+	s.Equal("completed", ft.Status, "status should be lowercased")
+}
+
+func (s *NormalizedMessageTestSuite) TestFinancialTransaction_Normalize_MerchantTrimmed() {
+	// Arrange
+	ft := &ingestor.FinancialTransaction{
+		AmountMinor: 1000,
+		Currency:    "USD",
+		Merchant:    "  Acme Corp  ", // leading/trailing whitespace
+		Status:      "completed",
+	}
+
+	// Act
+	err := ft.Normalize()
+
+	// Assert
+	s.NoError(err)
+	s.Equal("Acme Corp", ft.Merchant, "merchant should have whitespace trimmed")
+}
+
+func (s *NormalizedMessageTestSuite) TestFinancialTransaction_Normalize_AllFieldsNormalizedTogether() {
+	// Arrange — verify all three normalizations apply in a single call
+	ft := &ingestor.FinancialTransaction{
+		AmountMinor: 9999,
+		Currency:    " eur ",
+		Merchant:    "  Globex  ",
+		Status:      "PENDING",
+	}
+
+	// Act
+	err := ft.Normalize()
+
+	// Assert
+	s.NoError(err)
+	s.Equal("EUR",     ft.Currency, "currency should be uppercased")
+	s.Equal("pending", ft.Status,   "status should be lowercased")
+	s.Equal("Globex",  ft.Merchant, "merchant should be trimmed")
+}
+
+func (s *NormalizedMessageTestSuite) TestFinancialTransaction_Validate_InvalidStatus_ReturnsError() {
+	// Arrange — "approved" is not in the oneof list
+	ft := &ingestor.FinancialTransaction{
+		AmountMinor: 1000,
+		Currency:    "USD",
+		Merchant:    "Acme",
+		Status:      "approved",
+	}
+
+	// Act
+	err := ft.Validate()
+
+	// Assert
+	s.Require().Error(err, "status not in (completed, failed, pending) should fail validation")
+	var procErr ingestor.ProcessorError
+	s.Require().ErrorAs(err, &procErr)
+	s.Equal(ingestor.ErrValidatingData, procErr.TypeOfError)
+}
+
+func (s *NormalizedMessageTestSuite) TestFinancialTransaction_Validate_MissingCurrency_ReturnsError() {
+	ft := &ingestor.FinancialTransaction{
+		AmountMinor: 1000,
+		Currency:    "",
+		Merchant:    "Acme",
+		Status:      "completed",
+	}
+
+	s.Require().Error(ft.Validate(), "empty currency should fail validation")
+}
+
+func (s *NormalizedMessageTestSuite) TestFinancialTransaction_Validate_HappyPath_ReturnsNil() {
+	ft := &ingestor.FinancialTransaction{
+		AmountMinor: 1000,
+		Currency:    "USD",
+		Merchant:    "Acme",
+		Status:      "completed",
+	}
+
+	s.NoError(ft.Validate(), "fully valid FinancialTransaction should pass")
+}
+
+func (s *NormalizedMessageTestSuite) TestBaseEvent_LogValue_ReturnsGroupValue() {
+	event := validBaseEvent(validEnergyReading())
+	val := event.LogValue()
+	s.Equal(slog.KindGroup, val.Kind())
 }
 
 func validEnergyReading() *ingestor.EnergyReading {

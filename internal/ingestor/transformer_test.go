@@ -250,6 +250,13 @@ func (s *TransformerTestSuite) TestTransform_FinancialStream_OutputCanBeStoredIn
 		"a FinancialStream event produced by Transform should be storable in the DB")
 }
 
+func (s *TransformerTestSuite) TestAllDataTypes_ReturnsAllSupportedDomains() {
+	types := ingestor.AllDataTypes()
+	s.Len(types, 9, "should return all 4 domain types")
+	s.Contains(types, ingestor.DataTypeEnergyMeter)
+	s.Contains(types, ingestor.DataTypeFinancialStream)
+}
+
 func energyMeterMsg() *ingestor.DeviceMessage {
 	return &ingestor.DeviceMessage{
 		DeviceID:  TransformerDeviceID,

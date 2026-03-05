@@ -34,23 +34,23 @@ type BaseEvent struct {
 }
 
 type EnergyReading struct {
-	PowerW    int64 `json:"power_w" validate:"required,gte=0"`
-	EnergyWh  int64 `json:"energy_wh" validate:"required,gte=0"`
-	VoltageV  int32 `json:"voltage_v" validate:"required,gte=0,lte=500"`
-	CurrentMA int32 `json:"current_ma" validate:"required,gte=0"`
+	PowerW    float64 `json:"power_w" validate:"required,gte=0"`
+	EnergyWh  float64 `json:"energy_wh" validate:"required,gte=0"`
+	VoltageV  float32 `json:"voltage_v" validate:"required,gte=0,lte=500"`
+	CurrentMA float32 `json:"current_ma" validate:"required,gte=0"`
 }
 
 type FinancialTransaction struct {
-	AmountMinor int64  `json:"amount_minor" validate:"required"`
-	Currency    string `json:"currency" validate:"required"`
-	Merchant    string `json:"merchant" validate:"required"`
-	Status      string `json:"status" validate:"required,oneof=completed failed pending"`
+	AmountMinor float64 `json:"amount_minor" validate:"required"`
+	Currency    string  `json:"currency" validate:"required"`
+	Merchant    string  `json:"merchant" validate:"required"`
+	Status      string  `json:"status" validate:"required,oneof=completed failed pending"`
 }
 
 type EnvironmentalSensor struct {
-	TemperatureC    int64 `json:"temperature_c" validate:"required,gte=-50,lte=100"`
-	HumidityPercent int64 `json:"humidity_percent" validate:"required,gte=0,lte=100"`
-	AirQualityIndex int64 `json:"air_quality_index" validate:"required,gte=0,lte=500"`
+	TemperatureC    float64 `json:"temperature_c" validate:"required,gte=-50,lte=100"`
+	HumidityPercent float64 `json:"humidity_percent" validate:"required,gte=0,lte=100"`
+	AirQualityIndex float64 `json:"air_quality_index" validate:"required,gte=0,lte=500"`
 }
 
 type UnknownEvent struct {
@@ -157,7 +157,7 @@ func (er *EnergyReading) Normalize() error {
 	// Power = Voltage × Current (if one is missing)
 	if er.PowerW == 0 && er.VoltageV > 0 && er.CurrentMA > 0 {
 		// P = V × I, convert mA to A
-		er.PowerW = int64(er.VoltageV) * int64(er.CurrentMA) / 1000
+		er.PowerW = float64(er.VoltageV) * float64(er.CurrentMA) / 1000
 	}
 
 	// Round power to nearest watt
@@ -196,7 +196,7 @@ func (ft *FinancialTransaction) LogValue() slog.Value {
 	return slog.GroupValue(
 		slog.String("currency", ft.Currency),
 		slog.String("status", ft.Status),
-		slog.String("amount", strconv.FormatInt(ft.AmountMinor, 10)),
+		slog.String("amount", strconv.FormatFloat(ft.AmountMinor, 'f', -1, 64)),
 	)
 }
 
