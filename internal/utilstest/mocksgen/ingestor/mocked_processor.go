@@ -42,17 +42,17 @@ func (m *MockMessagePoller) EXPECT() *MockMessagePollerMockRecorder {
 }
 
 // Close mocks base method.
-func (m *MockMessagePoller) Close() error {
+func (m *MockMessagePoller) Close(ctx context.Context) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Close")
+	ret := m.ctrl.Call(m, "Close", ctx)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // Close indicates an expected call of Close.
-func (mr *MockMessagePollerMockRecorder) Close() *gomock.Call {
+func (mr *MockMessagePollerMockRecorder) Close(ctx any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Close", reflect.TypeOf((*MockMessagePoller)(nil).Close))
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Close", reflect.TypeOf((*MockMessagePoller)(nil).Close), ctx)
 }
 
 // PollMessage mocks base method.
@@ -71,15 +71,15 @@ func (mr *MockMessagePollerMockRecorder) PollMessage(ctx any) *gomock.Call {
 }
 
 // Subscribe mocks base method.
-func (m *MockMessagePoller) Subscribe(topics string) error {
+func (m *MockMessagePoller) Subscribe(ctx context.Context, topics string) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Subscribe", topics)
+	ret := m.ctrl.Call(m, "Subscribe", ctx, topics)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // Subscribe indicates an expected call of Subscribe.
-func (mr *MockMessagePollerMockRecorder) Subscribe(topics any) *gomock.Call {
+func (mr *MockMessagePollerMockRecorder) Subscribe(ctx, topics any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Subscribe", reflect.TypeOf((*MockMessagePoller)(nil).Subscribe), topics)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Subscribe", reflect.TypeOf((*MockMessagePoller)(nil).Subscribe), ctx, topics)
 }

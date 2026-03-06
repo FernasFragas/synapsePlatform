@@ -119,18 +119,18 @@ func (m *MockTransformer) EXPECT() *MockTransformerMockRecorder {
 }
 
 // Transform mocks base method.
-func (m *MockTransformer) Transform(msg *ingestor.DeviceMessage) (*ingestor.BaseEvent, error) {
+func (m *MockTransformer) Transform(ctx context.Context, msg *ingestor.DeviceMessage) (*ingestor.BaseEvent, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Transform", msg)
+	ret := m.ctrl.Call(m, "Transform", ctx, msg)
 	ret0, _ := ret[0].(*ingestor.BaseEvent)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // Transform indicates an expected call of Transform.
-func (mr *MockTransformerMockRecorder) Transform(msg any) *gomock.Call {
+func (mr *MockTransformerMockRecorder) Transform(ctx, msg any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Transform", reflect.TypeOf((*MockTransformer)(nil).Transform), msg)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Transform", reflect.TypeOf((*MockTransformer)(nil).Transform), ctx, msg)
 }
 
 // MockNormalizedData is a mock of NormalizedData interface.
