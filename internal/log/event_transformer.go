@@ -1,6 +1,7 @@
 package log
 
 import (
+	"context"
 	"log/slog"
 	"synapsePlatform/internal/ingestor"
 )
@@ -17,8 +18,8 @@ func NewEventTransformer(logger *slog.Logger, transformer ingestor.Transformer) 
 	}
 }
 
-func (e *EventTransformer) Transform(msg *ingestor.DeviceMessage) (*ingestor.BaseEvent, error) {
-	transformed, err := e.transformer.Transform(msg)
+func (e *EventTransformer) Transform(ctx context.Context, msg *ingestor.DeviceMessage) (*ingestor.BaseEvent, error) {
+	transformed, err := e.transformer.Transform(ctx, msg)
 	if err != nil {
 		e.logger.Error("failed to transform message",
 			"device_id", msg.DeviceID,

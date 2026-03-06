@@ -59,7 +59,7 @@ func (c *KafkaConsumer) PollMessage(ctx context.Context) (*ingestor.DeviceMessag
 }
 
 // Close gracefully shuts down all reader
-func (c *KafkaConsumer) Close() error {
+func (c *KafkaConsumer) Close(context.Context) error {
 	for _, reader := range c.reader {
 		if err := reader.Close(); err != nil {
 			return err
@@ -70,11 +70,11 @@ func (c *KafkaConsumer) Close() error {
 }
 
 // Subscribe registers topics to consume from
-func (c *KafkaConsumer) Subscribe(topic string) error {
+func (c *KafkaConsumer) Subscribe(_ context.Context, topics string) error {
 	reader := kafka.NewReader(kafka.ReaderConfig{
 		Brokers:        c.config.Brokers,
 		GroupID:        c.config.GroupID,
-		Topic:          topic,
+		Topic:          topics,
 		MinBytes:       c.config.MinBytes,
 		MaxBytes:       c.config.MaxBytes,
 		CommitInterval: time.Second, // tune

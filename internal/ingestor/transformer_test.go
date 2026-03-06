@@ -31,7 +31,7 @@ func (s *TransformerTestSuite) SetupTest() {
 func (s *TransformerTestSuite) TestTransform_EmptyDomainsList_AllowsAnyDomain() {
 	transformer := ingestor.NewMessageTransformer([]ingestor.DataTypes{})
 
-	event, err := transformer.Transform(energyMeterMsg())
+	event, err := transformer.Transform(nil, energyMeterMsg())
 
 	s.Require().NoError(err, "empty domain filter should allow any message type through")
 	s.NotNil(event)
@@ -40,7 +40,7 @@ func (s *TransformerTestSuite) TestTransform_EmptyDomainsList_AllowsAnyDomain() 
 func (s *TransformerTestSuite) TestTransform_NilDomainsList_AllowsAnyDomain() {
 	transformer := ingestor.NewMessageTransformer(nil)
 
-	event, err := transformer.Transform(energyMeterMsg())
+	event, err := transformer.Transform(nil, energyMeterMsg())
 
 	s.Require().NoError(err, "nil domain filter should behave like empty — allow all")
 	s.NotNil(event)
@@ -51,7 +51,7 @@ func (s *TransformerTestSuite) TestTransform_ConfiguredDomain_AllowsThrough() {
 		ingestor.DataTypeEnergyMeter,
 	})
 
-	event, err := transformer.Transform(energyMeterMsg())
+	event, err := transformer.Transform(s.T().Context(), energyMeterMsg())
 
 	s.Require().NoError(err, "energy_meter is configured as supported — should be allowed")
 	s.NotNil(event)
@@ -62,7 +62,7 @@ func (s *TransformerTestSuite) TestTransform_UnconfiguredDomain_ReturnsProcessor
 		ingestor.DataTypeFinancialStream,
 	})
 
-	event, err := transformer.Transform(energyMeterMsg())
+	event, err := transformer.Transform(nil, energyMeterMsg())
 
 	s.Nil(event, "no event should be returned for an unsupported domain")
 	s.Require().Error(err, "unsupported domain must return an error")
@@ -81,7 +81,7 @@ func (s *TransformerTestSuite) TestTransform_MultipleSupportedDomains_RejectsUnl
 		ingestor.DataTypeEnvironmentalSensor,
 	})
 
-	event, err := transformer.Transform(financialMsg())
+	event, err := transformer.Transform(nil, financialMsg())
 
 	s.Nil(event, "financial_stream should be rejected when not in the supported list")
 	s.Require().Error(err, "unlisted domain should return an error")
@@ -91,7 +91,7 @@ func (s *TransformerTestSuite) TestTransform_DeviceID_MappedToEntityID() {
 	transformer := ingestor.NewMessageTransformer(nil)
 	msg := energyMeterMsg()
 
-	event, err := transformer.Transform(msg)
+	event, err := transformer.Transform(nil, msg)
 
 	s.Require().NoError(err)
 	s.Equal(TransformerDeviceID, event.EntityID,
@@ -104,7 +104,7 @@ func (s *TransformerTestSuite) TestTransform_Timestamp_MappedToOccurredAt() {
 	msg := energyMeterMsg()
 	msg.Timestamp = fixedTime
 
-	event, err := transformer.Transform(msg)
+	event, err := transformer.Transform(nil, msg)
 
 	s.Require().NoError(err)
 	s.Equal(fixedTime, event.OccurredAt,
@@ -114,7 +114,7 @@ func (s *TransformerTestSuite) TestTransform_Timestamp_MappedToOccurredAt() {
 func (s *TransformerTestSuite) TestTransform_SchemaVersion_AlwaysV1() {
 	transformer := ingestor.NewMessageTransformer(nil)
 
-	event, err := transformer.Transform(energyMeterMsg())
+	event, err := transformer.Transform(nil, energyMeterMsg())
 
 	s.Require().NoError(err)
 	s.Equal(ingestor.SchemaVersion1, event.SchemaVersion,
@@ -124,7 +124,7 @@ func (s *TransformerTestSuite) TestTransform_SchemaVersion_AlwaysV1() {
 func (s *TransformerTestSuite) TestTransform_EventID_IsNonZeroUUID() {
 	transformer := ingestor.NewMessageTransformer(nil)
 
-	event, err := transformer.Transform(energyMeterMsg())
+	event, err := transformer.Transform(nil, energyMeterMsg())
 
 	s.Require().NoError(err)
 	s.NotEqual(uuid.UUID{}, event.EventID,
@@ -134,8 +134,8 @@ func (s *TransformerTestSuite) TestTransform_EventID_IsNonZeroUUID() {
 func (s *TransformerTestSuite) TestTransform_TwoCalls_ProduceDifferentEventIDs() {
 	transformer := ingestor.NewMessageTransformer(nil)
 
-	e1, err1 := transformer.Transform(energyMeterMsg())
-	e2, err2 := transformer.Transform(energyMeterMsg())
+	e1, err1 := transformer.Transform(nil, energyMeterMsg())
+	e2, err2 := transformer.Transform(nil, energyMeterMsg())
 
 	s.Require().NoError(err1)
 	s.Require().NoError(err2)
@@ -145,7 +145,7 @@ func (s *TransformerTestSuite) TestTransform_TwoCalls_ProduceDifferentEventIDs()
 func (s *TransformerTestSuite) TestTransform_EnergyMeterType_DomainIsEnergyMeter() {
 	transformer := ingestor.NewMessageTransformer(nil)
 
-	event, err := transformer.Transform(energyMeterMsg())
+	event, err := transformer.Transform(nil, energyMeterMsg())
 
 	s.Require().NoError(err)
 	s.Equal(ingestor.DataTypeEnergyMeter.String(), event.Domain)
@@ -155,7 +155,7 @@ func (s *TransformerTestSuite) TestTransform_EnergyMeterType_DomainIsEnergyMeter
 func (s *TransformerTestSuite) TestTransform_FinancialStreamType_DomainIsFinancialStream() {
 	transformer := ingestor.NewMessageTransformer(nil)
 
-	event, err := transformer.Transform(financialMsg())
+	event, err := transformer.Transform(nil, financialMsg())
 
 	s.Require().NoError(err)
 	s.Equal(ingestor.DataTypeFinancialStream.String(), event.Domain)
@@ -164,7 +164,7 @@ func (s *TransformerTestSuite) TestTransform_FinancialStreamType_DomainIsFinanci
 func (s *TransformerTestSuite) TestTransform_EnvironmentalSensorType_DomainIsEnvironmental() {
 	transformer := ingestor.NewMessageTransformer(nil)
 
-	event, err := transformer.Transform(environmentalMsg())
+	event, err := transformer.Transform(nil, environmentalMsg())
 
 	s.Require().NoError(err)
 	s.Equal(ingestor.DataTypeEnvironmentalSensor.String(), event.Domain)
@@ -179,7 +179,7 @@ func (s *TransformerTestSuite) TestTransform_UnknownMsgType_MapsToUnknownDomain(
 		Metrics:   map[string]any{},
 	}
 
-	event, err := transformer.Transform(msg)
+	event, err := transformer.Transform(nil, msg)
 
 	s.Require().NoError(err, "unknown types should map to DataTypeUnknown without error")
 	s.Equal(ingestor.DataTypeUnknown.String(), event.Domain)
@@ -194,7 +194,7 @@ func (s *TransformerTestSuite) TestTransform_EmptyMetrics_EnergyMeter_Validation
 		Metrics:   map[string]any{},
 	}
 
-	event, err := transformer.Transform(msg)
+	event, err := transformer.Transform(nil, msg)
 
 	s.Nil(event)
 	s.Require().Error(err, "zero-value EnergyReading should fail required constraints")
@@ -213,7 +213,7 @@ func (s *TransformerTestSuite) TestTransform_EmptyMetrics_FinancialStream_Valida
 		Metrics:   map[string]any{},
 	}
 
-	_, err := transformer.Transform(msg)
+	_, err := transformer.Transform(nil, msg)
 
 	s.Require().Error(err, "empty FinancialTransaction fields should fail required constraints")
 }
@@ -224,7 +224,7 @@ func (s *TransformerTestSuite) TestTransform_EnergyMeter_OutputCanBeStoredInDB()
 	transformer := ingestor.NewMessageTransformer(nil)
 
 	// --- Act ---
-	event, err := transformer.Transform(energyMeterMsg())
+	event, err := transformer.Transform(nil, energyMeterMsg())
 	s.Require().NoError(err, "transform must succeed before we can test persistence")
 
 	storeErr := repo.StoreData(context.Background(), event)
@@ -240,7 +240,7 @@ func (s *TransformerTestSuite) TestTransform_FinancialStream_OutputCanBeStoredIn
 	transformer := ingestor.NewMessageTransformer(nil)
 
 	// --- Act ---
-	event, err := transformer.Transform(financialMsg())
+	event, err := transformer.Transform(nil, financialMsg())
 	s.Require().NoError(err)
 
 	storeErr := repo.StoreData(context.Background(), event)

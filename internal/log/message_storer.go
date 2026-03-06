@@ -18,8 +18,7 @@ func NewMessageStorer(log *slog.Logger, storer ingestor.MessageStorer) *MessageS
 	}
 }
 
-func (s *MessageStorer) StoreData(
-	ctx context.Context, data *ingestor.BaseEvent) error {
+func (s *MessageStorer) StoreData(ctx context.Context, data *ingestor.BaseEvent) error {
 	err := s.storer.StoreData(ctx, data)
 	if err != nil {
 		s.logger.Error("failed to store event",

@@ -50,7 +50,7 @@ func main() {
 	msgPoller = internal.NewConsumer(kafkaConfig)
 	msgPoller = synnapLog.NewMessagePoller(logger, msgPoller)
 	// Subscribe to the ingestion topic
-	if err := msgPoller.Subscribe("ingestion.raw"); err != nil {
+	if err := msgPoller.Subscribe(nil, "ingestion.raw"); err != nil {
 		log.Fatalf("Failed to subscribe to topics: %v", err)
 	}
 

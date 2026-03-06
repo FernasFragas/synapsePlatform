@@ -20,7 +20,7 @@ type MessageStorer interface {
 }
 
 type Transformer interface {
-	Transform(msg *DeviceMessage) (*BaseEvent, error)
+	Transform(ctx context.Context, msg *DeviceMessage) (*BaseEvent, error)
 }
 
 type NormalizedData interface {
@@ -64,7 +64,7 @@ func (i *Ingestor) Ingest(ctx context.Context) error {
 				continue
 			}
 
-			transformedData, err := i.transformer.Transform(msg)
+			transformedData, err := i.transformer.Transform(ctx, msg)
 			if err != nil {
 				continue
 			}

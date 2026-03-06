@@ -9,13 +9,13 @@ import (
 // Any message broker (Kafka, RabbitMQ, NATS) must implement this.
 type MessagePoller interface {
 	// Subscribe registers topics/queues to consume from
-	Subscribe(topics string) error
+	Subscribe(ctx context.Context, topics string) error
 
 	// PollMessage begins consuming messages, calling handler for each
 	PollMessage(ctx context.Context) (*DeviceMessage, error)
 
 	// Close gracefully shuts down the consumer
-	Close() error
+	Close(ctx context.Context) error
 }
 
 type Processor struct {

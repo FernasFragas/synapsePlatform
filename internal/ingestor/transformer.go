@@ -2,6 +2,7 @@
 package ingestor
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -21,7 +22,7 @@ func NewMessageTransformer(domains []DataTypes) *MessageTransformer {
 }
 
 // Transform converts a device message to a domain event.
-func (t *MessageTransformer) Transform(msg *DeviceMessage) (*BaseEvent, error) {
+func (t *MessageTransformer) Transform(ctx context.Context, msg *DeviceMessage) (*BaseEvent, error) {
 	domain := ParseDataType(msg.Type)
 
 	if !t.isDomainSupported(domain) {
