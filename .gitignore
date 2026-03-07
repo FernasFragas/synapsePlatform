@@ -18,3 +18,7 @@ internal/mocks/*
 bin/
 
 *Icon
+
+*.sqlite
+
+coverage.html
