@@ -22,3 +22,5 @@ bin/
 *.sqlite
 
 coverage.html
+
+s.txt
