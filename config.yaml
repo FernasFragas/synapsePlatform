@@ -1,0 +1,36 @@
+server:
+  address: ":8080"
+  timeouts:
+    read_header: 5s
+    read: 10s
+    write: 30s
+    idle: 120s
+  shutdown:
+    timeout: 10s
+    grace_period: 5s
+
+auth:
+  jwt:
+    issuer: "https://auth.example.com"
+    audience: "synapse-platform-api"
+    # more realistic would be an env var: ${JWT_SECRET}
+    secret: "your-256-bit-secret-replace-me!!"
+
+kafka:
+  brokers:
+    - "localhost:9092"
+  group_id: "synapse-platform-consumer"
+  topic: "ingestion.raw"
+  min_bytes: 10000      # 10KB
+  max_bytes: 10000000   # 10MB
+
+database:
+  path: "data.db"
+
+log:
+  redact_keys:
+    - "token"
+    - "password"
+    - "secret"
+    - "authorization"
+  max_value_bytes: 512
