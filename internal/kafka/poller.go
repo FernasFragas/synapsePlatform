@@ -12,7 +12,7 @@ import (
 
 // KafkaConsumer handles consuming messages from Kafka
 type KafkaConsumer struct {
-	reader []*kafka.Reader
+	reader *kafka.Reader
 	config StreamingConfigs
 }
 
@@ -26,10 +26,19 @@ type StreamingConfigs struct {
 }
 
 // NewConsumer creates a new Kafka consumer
-func NewConsumer(cfg StreamingConfigs) *KafkaConsumer {
+func NewConsumer(config StreamingConfigs, topic string) *KafkaConsumer {
+	reader := kafka.NewReader(kafka.ReaderConfig{
+		Brokers:        config.Brokers,
+		GroupID:        config.GroupID,
+		Topic:          topic,
+		MinBytes:       config.MinBytes,
+		MaxBytes:       config.MaxBytes,
+		CommitInterval: time.Second, // tune
+	})
+
 	return &KafkaConsumer{
-		config: cfg,
-		reader: make([]*kafka.Reader, 0),
+		config: config,
+		reader: reader,
 	}
 }
 
@@ -39,20 +48,18 @@ func (c *KafkaConsumer) PollMessage(ctx context.Context) (*ingestor.DeviceMessag
 	case <-ctx.Done():
 		return nil, nil
 	default:
-		for _, reader := range c.reader {
-			kafkaMsg, err := reader.ReadMessage(ctx)
-			if err != nil {
-				return nil, err
-			}
-
-			var deviceMessage ingestor.DeviceMessage
-			err = json.Unmarshal(kafkaMsg.Value, &deviceMessage)
-			if err != nil {
-				return nil, err
-			}
-
-			return &deviceMessage, nil
+		kafkaMsg, err := c.reader.ReadMessage(ctx)
+		if err != nil {
+			return nil, err
 		}
+
+		var deviceMessage ingestor.DeviceMessage
+		err = json.Unmarshal(kafkaMsg.Value, &deviceMessage)
+		if err != nil {
+			return nil, err
+		}
+
+		return &deviceMessage, nil
 	}
 
 	return nil, nil
@@ -60,27 +67,9 @@ func (c *KafkaConsumer) PollMessage(ctx context.Context) (*ingestor.DeviceMessag
 
 // Close gracefully shuts down all reader
 func (c *KafkaConsumer) Close(context.Context) error {
-	for _, reader := range c.reader {
-		if err := reader.Close(); err != nil {
-			return err
-		}
+	if err := c.reader.Close(); err != nil {
+		return err
 	}
-
-	return nil
-}
-
-// Subscribe registers topics to consume from
-func (c *KafkaConsumer) Subscribe(_ context.Context, topics string) error {
-	reader := kafka.NewReader(kafka.ReaderConfig{
-		Brokers:        c.config.Brokers,
-		GroupID:        c.config.GroupID,
-		Topic:          topics,
-		MinBytes:       c.config.MinBytes,
-		MaxBytes:       c.config.MaxBytes,
-		CommitInterval: time.Second, // tune
-	})
-
-	c.reader = append(c.reader, reader)
 
 	return nil
 }

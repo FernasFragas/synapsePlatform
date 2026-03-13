@@ -8,8 +8,6 @@ import (
 // MessagePoller is the port interface for consuming messages
 // Any message broker (Kafka, RabbitMQ, NATS) must implement this.
 type MessagePoller interface {
-	// Subscribe registers topics/queues to consume from
-	Subscribe(ctx context.Context, topics string) error
 
 	// PollMessage begins consuming messages, calling handler for each
 	PollMessage(ctx context.Context) (*DeviceMessage, error)

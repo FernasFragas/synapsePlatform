@@ -46,14 +46,14 @@ func (r *MessagePoller) WithResult(messages *ingestor.DeviceMessage) *MessagePol
 
 // WithSubscriptionSuccessful successfully subscribe.
 func (r *MessagePoller) WithSubscriptionSuccessful(topic string) *MessagePoller {
-	r.MockMessagePoller.EXPECT().Subscribe(topic).Return(nil)
+	r.MockMessagePoller.EXPECT().Subscribe(gomock.Any(), topic).Return(nil)
 
 	return r
 }
 
 // WithSubscriptionUnSuccessful unsuccessfully tries to subscribing to a topic returning the given error.
 func (r *MessagePoller) WithSubscriptionUnSuccessful(topic string, err error) *MessagePoller {
-	r.MockMessagePoller.EXPECT().Subscribe(topic).Return(err)
+	r.MockMessagePoller.EXPECT().Subscribe(gomock.Any(), topic).Return(err)
 
 	return r
 }

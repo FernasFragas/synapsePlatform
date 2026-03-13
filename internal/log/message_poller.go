@@ -18,30 +18,20 @@ func NewMessagePoller(log *slog.Logger, poller ingestor.MessagePoller) *MessageP
 	}
 }
 
-// Subscribe logs the registers topics/queues to consume from.
-func (mp *MessagePoller) Subscribe(_ context.Context, topics string) error {
-	err := mp.poller.Subscribe(nil, topics)
-	if err != nil {
-		mp.logger.Error("failed to subscribe", "topic", topics, "error", err)
-
-		return err
-	}
-
-	mp.logger.Info("subscribed to topic", "topic", topics)
-
-	return nil
-}
-
 // PollMessage logs the consuming messages, calling handler for each.
 func (mp *MessagePoller) PollMessage(ctx context.Context) (*ingestor.DeviceMessage, error) {
 	msg, err := mp.poller.PollMessage(ctx)
 	if err != nil {
-		mp.logger.Error("failed to poll message",
-			"device_id", msg.DeviceID,
-			"type",      msg.Type,
-			"timestamp", msg.Timestamp.String(),
-			"error", err,
-		)
+		attrs := []any{"error", err}
+		if msg != nil {
+			attrs = append(attrs,
+				"device_id", msg.DeviceID,
+				"type", msg.Type,
+				"timestamp", msg.Timestamp.String(),
+			)
+		}
+
+		mp.logger.Error("failed to poll message", attrs...)
 
 		return msg, err
 	}
@@ -56,8 +46,8 @@ func (mp *MessagePoller) PollMessage(ctx context.Context) (*ingestor.DeviceMessa
 }
 
 // Close logs gracefully shuts down the consumer.
-func (mp *MessagePoller) Close(context.Context) error {
-	err := mp.poller.Close(nil)
+func (mp *MessagePoller) Close(ctx context.Context) error {
+	err := mp.poller.Close(ctx)
 	if err != nil {
 		mp.logger.Error("failed to close connection", "error", err)
 
