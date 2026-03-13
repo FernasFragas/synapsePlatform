@@ -44,3 +44,97 @@ make local-resources
 make run
 ### 4. Send sample messages to verify ingestion
 make kafka-send-sample
+
+---
+
+## API Usage
+
+### Authentication
+
+All API endpoints require a valid JWT Bearer token. The token must be signed with **HS256** and include the following claims:
+
+| Claim       | Description                          | Example                         |
+|-------------|--------------------------------------|---------------------------------|
+| `iss`       | Token issuer                         | `https://auth.example.com`      |
+| `aud`       | Target audience                      | `synapse-platform-api`          |
+| `sub`       | Subject (user identifier)            | `user-123`                      |
+| `client_id` | Client application identifier        | `my-client`                     |
+| `scope`     | Space-separated list of permissions  | `read:events`                   |
+| `exp`       | Expiration time (Unix timestamp)     | `1899999999`                    |
+
+### Generating a Token
+
+Using [jwt.io](https://jwt.io):
+
+1. Set the algorithm to **HS256**
+2. Use the following payload:
+
+```json
+{
+  "iss": "https://auth.example.com",
+  "aud": "synapse-platform-api",
+  "sub": "user-123",
+  "client_id": "my-client",
+  "scope": "read:events",
+  "exp": 1899999999
+}
+```
+
+3. Set the signing secret to your configured JWT secret
+4. Copy the encoded token
+
+### Endpoints
+
+#### List Events
+
+```
+GET /events
+```
+
+Returns all stored events.
+
+```bash
+curl http://localhost:8080/events \
+  -H "Authorization: Bearer <token>"
+```
+
+#### Get Event by ID
+
+```
+GET /events/{id}
+```
+
+Returns a single event by its ID.
+
+```bash
+curl http://localhost:8080/events/some-event-id \
+  -H "Authorization: Bearer <token>"
+```
+
+### Response Format
+
+```json
+[
+  {
+    "event_id": "550e8400-e29b-41d4-a716-446655440000",
+    "domain": "iot",
+    "event_type": "temperature_reading",
+    "entity_id": "sensor-42",
+    "occurred_at": "2025-01-15T10:30:00Z",
+    "source": "env-sensor",
+    "schema_version": "1.0",
+    "data": {}
+  }
+]
+```
+
+### Error Responses
+
+| Status | Cause                                      |
+|--------|--------------------------------------------|
+| `401`  | Missing or invalid token                   |
+| `403`  | Token valid but missing `read:events` scope|
+| `404`  | Event not found (GET by ID only)           |
+| `500`  | Internal server error                      |
+
+---

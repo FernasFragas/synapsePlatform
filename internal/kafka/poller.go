@@ -1,5 +1,5 @@
 //go:generate mockgen -source=$GOFILE -destination=../internal/utilstest/mocksgen/mocked_$GOFILE
-package internal
+package kafka
 
 import (
 	"context"
