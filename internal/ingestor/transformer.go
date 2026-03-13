@@ -93,32 +93,14 @@ type domainMapping struct {
 func (t *MessageTransformer) filterPerDomain(msg *DeviceMessage) (domainMapping, error) {
 	domain := ParseDataType(msg.Type)
 
-	switch domain {
-	case DataTypeFinancialStream:
-		return domainMapping{
-			payload:    &FinancialTransaction{},
-			source:     DataTypeFinancialStream.String(),
-			entityType: EntityTypeDevice,
-		}, nil
-	case DataTypeEnergyMeter:
-		return domainMapping{
-			payload:    &EnergyReading{},
-			source:     DataTypeEnergyMeter.String(),
-			entityType: EntityTypeSensor,
-		}, nil
-	case DataTypeEnvironmentalSensor:
-		return domainMapping{
-			payload:    &EnvironmentalSensor{},
-			source:     DataTypeEnvironmentalSensor.String(),
-			entityType: EntityTypeSensor,
-		}, nil
-	case DataTypeUnknown:
-		return domainMapping{
-			payload:    &UnknownEvent{},
-			source:     DataTypeUnknown.String(),
-			entityType: EntityTypeUnknown,
-		}, nil
-	default:
+	desc, ok := LookupDomain(domain)
+	if !ok {
 		return domainMapping{}, ErrUnknownDataType
 	}
+
+	return domainMapping{
+		payload:    desc.NewPayload(),
+		source:     desc.Source,
+		entityType: desc.EntityType,
+	}, nil
 }

@@ -5,8 +5,11 @@ import (
 	"context"
 	"database/sql"
 	_ "embed"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"time"
 
 	"synapsePlatform/internal/ingestor"
 	"synapsePlatform/internal/sqlc/generated"
@@ -100,21 +103,54 @@ func (db *Repo) GetEvent(ctx context.Context, eventID string) (*ingestor.BaseEve
 	return toBaseEvent(row)
 }
 
-func (db *Repo) ListEvents(ctx context.Context) ([]*ingestor.BaseEvent, error) {
-	rows, err := db.Queries.ListEvents(ctx)
+func (db *Repo) ListEvents(ctx context.Context, page ingestor.PageRequest) (*ingestor.PageResponse[*ingestor.BaseEvent], error) {
+	limit := clamp(page.Limit, 1, maxPageSize, defaultPageSize)
+	fetchLimit := int64(limit + 1) // fetch one extra to detect "has more"
+
+	var rows []generated.Event
+	var err error
+
+	if page.Cursor == "" {
+		rows, err = db.Queries.ListEventsFirstPage(ctx, fetchLimit)
+	} else {
+		c, cErr := decodeCursor(page.Cursor)
+		if cErr != nil {
+			return nil, cErr
+		}
+
+		rows, err = db.Queries.ListEventsAfterCursor(ctx, generated.ListEventsAfterCursorParams{
+			IngestedAt: c.IngestedAt,
+			Limit:      fetchLimit,
+		})
+	}
 	if err != nil {
 		return nil, err
+	}
+
+	hasMore := len(rows) > limit
+	if hasMore {
+		rows = rows[:limit]
 	}
 
 	events := make([]*ingestor.BaseEvent, len(rows))
 	for i, row := range rows {
 		events[i], err = toBaseEvent(row)
-		if err != nil {   // ← check error, don't blindly return after first iteration
+		if err != nil {
 			return nil, err
 		}
 	}
 
-	return events, nil
+	var nextCursor string
+	if hasMore {
+		last := rows[len(rows)-1]
+		nextCursor = encodeCursor(last.IngestedAt, last.EventID)
+	}
+
+	return &ingestor.PageResponse[*ingestor.BaseEvent]{
+		Items:      events,
+		NextCursor: nextCursor,
+		HasMore:    hasMore,
+	}, nil
 }
 
 func (db *Repo) Close() error {
@@ -136,8 +172,13 @@ func toBaseEvent(row generated.Event) (*ingestor.BaseEvent, error) {
 		return nil, err
 	}
 
+	eventID, err := uuid.Parse(row.EventID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid event UUID %q: %w", row.EventID, err)
+	}
+
 	return &ingestor.BaseEvent{
-		EventID:       uuid.MustParse(row.EventID),
+		EventID:       eventID,
 		Domain:        row.Domain,
 		EventType:     row.EventType,
 		EntityID:      row.EntityID,
@@ -151,42 +192,55 @@ func toBaseEvent(row generated.Event) (*ingestor.BaseEvent, error) {
 }
 
 func toBaseEventValue(data string, eventType ingestor.DataTypes) (ingestor.BaseEventValue, error) {
-	switch eventType {
-	case ingestor.DataTypeFinancialStream:
-		var financialTransaction ingestor.FinancialTransaction
-
-		err := json.Unmarshal([]byte(data), &financialTransaction)
-		if err != nil {
-			return nil, err
-		}
-
-		return &financialTransaction, nil
-	case ingestor.DataTypeEnergyMeter:
-		var energyReading ingestor.EnergyReading
-
-		err := json.Unmarshal([]byte(data), &energyReading)
-		if err != nil {
-			return nil, err
-		}
-
-		return &energyReading, nil
-	case ingestor.DataTypeEnvironmentalSensor:
-		var environmentalSensor ingestor.EnvironmentalSensor
-
-		err := json.Unmarshal([]byte(data), &environmentalSensor)
-		if err != nil {
-			return nil, err
-		}
-
-		return &environmentalSensor, nil
-	default:
-		var unknownEvent ingestor.UnknownEvent
-
-		err := json.Unmarshal([]byte(data), &unknownEvent)
-		if err != nil {
-			return nil, err
-		}
-
-		return &unknownEvent, nil
+	desc, ok := ingestor.LookupDomain(eventType)
+	if !ok {
+		desc, _ = ingestor.LookupDomain(ingestor.DataTypeUnknown)
 	}
+
+	payload := desc.NewPayload()
+
+	err := json.Unmarshal([]byte(data), payload)
+	if err != nil {
+		return nil, err
+	}
+
+	return payload, nil
+}
+
+const maxPageSize = 100
+const defaultPageSize = 20
+
+type cursor struct {
+	IngestedAt time.Time `json:"t"`
+	EventID    string    `json:"id"`
+}
+
+func encodeCursor(t time.Time, id string) string {
+	b, _ := json.Marshal(cursor{IngestedAt: t, EventID: id})
+	return base64.RawURLEncoding.EncodeToString(b)
+}
+
+func decodeCursor(s string) (cursor, error) {
+	b, err := base64.RawURLEncoding.DecodeString(s)
+	if err != nil {
+		return cursor{}, fmt.Errorf("invalid cursor: %w", err)
+	}
+	var c cursor
+	if err := json.Unmarshal(b, &c); err != nil {
+		return cursor{}, fmt.Errorf("invalid cursor: %w", err)
+	}
+	return c, nil
+}
+
+func clamp(v, min, max, fallback int) int {
+	if v <= 0 {
+		return fallback
+	}
+	if v < min {
+		return min
+	}
+	if v > max {
+		return max
+	}
+	return v
 }

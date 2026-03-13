@@ -57,6 +57,29 @@ type UnknownEvent struct {
 	Data map[string]any `json:"data"`
 }
 
+func init() {
+	RegisterDomain(DataTypeFinancialStream, DomainDescriptor{
+		EntityType: EntityTypeDevice,
+		Source:     DataTypeFinancialStream.String(),
+		NewPayload: func() NormalizedData { return &FinancialTransaction{} },
+	})
+	RegisterDomain(DataTypeEnergyMeter, DomainDescriptor{
+		EntityType: EntityTypeSensor,
+		Source:     DataTypeEnergyMeter.String(),
+		NewPayload: func() NormalizedData { return &EnergyReading{} },
+	})
+	RegisterDomain(DataTypeEnvironmentalSensor, DomainDescriptor{
+		EntityType: EntityTypeSensor,
+		Source:     DataTypeEnvironmentalSensor.String(),
+		NewPayload: func() NormalizedData { return &EnvironmentalSensor{} },
+	})
+	RegisterDomain(DataTypeUnknown, DomainDescriptor{
+		EntityType: EntityTypeUnknown,
+		Source:     DataTypeUnknown.String(),
+		NewPayload: func() NormalizedData { return &UnknownEvent{} },
+	})
+}
+
 func (e *BaseEvent) Validate() error {
 	err := validate.Struct(e)
 	if err != nil {
