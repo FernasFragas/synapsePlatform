@@ -29,3 +29,14 @@ CREATE INDEX IF NOT EXISTS idx_domain_type ON events(domain, event_type);
 CREATE INDEX IF NOT EXISTS idx_entity ON events(entity_id, entity_type);
 CREATE INDEX IF NOT EXISTS idx_occurred_at ON events(occurred_at);
 CREATE INDEX IF NOT EXISTS idx_source ON events(source);
+
+CREATE TABLE IF NOT EXISTS failed_messages (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    stage      TEXT NOT NULL,
+    message    TEXT,
+    error      TEXT NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_failed_stage ON failed_messages(stage);
+CREATE INDEX IF NOT EXISTS idx_failed_created_at ON failed_messages(created_at);

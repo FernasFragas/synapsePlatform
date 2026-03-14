@@ -1,0 +1,6 @@
+{
+  "device_id": "sensor-42",
+  "type": "energy_meter",
+  "timestamp": "2026-03-08T14:30:00Z",
+  "metrics": { "power_w": -999, "energy_wh": 0, "voltage_v": 0, "current_ma": 0 }
+}

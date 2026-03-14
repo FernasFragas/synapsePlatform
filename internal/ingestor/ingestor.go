@@ -28,6 +28,10 @@ type NormalizedData interface {
 	Normalize() error
 }
 
+type FailureStorer interface {
+	StoreFailure(ctx context.Context, failed FailedMessage) error
+}
+
 type Config struct {
 	CompatibleDataTypes []DataTypes
 }
@@ -37,14 +41,16 @@ type Ingestor struct {
 	processor   DataProcessor
 	storer      MessageStorer
 	transformer Transformer
+	failures    FailureStorer
 }
 
-func New(cfg Config, processor DataProcessor, storer MessageStorer, transformer Transformer) *Ingestor {
+func New(cfg Config, processor DataProcessor, storer MessageStorer, transformer Transformer, failures FailureStorer) *Ingestor {
 	return &Ingestor{
 		cfg:         cfg,
 		processor:   processor,
 		storer:      storer,
 		transformer: transformer,
+		failures:    failures,
 	}
 
 }
@@ -57,6 +63,11 @@ func (i *Ingestor) Ingest(ctx context.Context) error {
 		default:
 			msg, err := i.processor.ProcessData(ctx)
 			if err != nil {
+				err = i.failures.StoreFailure(ctx, FailedMessage{Stage: "process", Message: msg, Err: err})
+				if err != nil {
+					return err
+				}
+
 				continue
 			}
 
@@ -66,11 +77,21 @@ func (i *Ingestor) Ingest(ctx context.Context) error {
 
 			transformedData, err := i.transformer.Transform(ctx, msg)
 			if err != nil {
+				err = i.failures.StoreFailure(ctx, FailedMessage{Stage: "transform", Message: msg, Err: err})
+				if err != nil {
+					return err
+				}
+
 				continue
 			}
 
 			err = i.storer.StoreData(ctx, transformedData)
 			if err != nil {
+				err = i.failures.StoreFailure(ctx, FailedMessage{Stage: "store", Message: msg, Err: err})
+				if err != nil {
+					return err
+				}
+
 				continue
 			}
 		}

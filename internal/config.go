@@ -60,11 +60,12 @@ type JWTConfig struct {
 }
 
 type KafkaConfig struct {
-	Brokers  []string `yaml:"brokers"`
-	GroupID  string   `yaml:"group_id"`
-	Topic    string   `yaml:"topic"`
-	MinBytes int      `yaml:"min_bytes"`
-	MaxBytes int      `yaml:"max_bytes"`
+	Brokers   []string `yaml:"brokers"`
+	GroupID   string   `yaml:"group_id"`
+	Topics    []string `yaml:"topics"`
+	DLQTopics string `yaml:"dlq_topic"`
+	MinBytes  int      `yaml:"min_bytes"`
+	MaxBytes  int      `yaml:"max_bytes"`
 }
 
 type DatabaseConfig struct {
