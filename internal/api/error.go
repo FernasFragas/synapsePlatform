@@ -1,21 +1,15 @@
 package api
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
+	"synapsePlatform/internal"
 )
-
-// Sentinel errors — used by handlers and tests with errors.Is.
-var (
-	ErrInvalidEventID = errors.New("event id must be a valid UUID")
-)
-
-// TypeOfError classifies the category of failure — maps directly to HTTP status codes.
-type TypeOfError int
 
 const (
-	ErrTypeNotFound  TypeOfError = iota
+	ErrTypeNotFound internal.TypeOfError = iota
 	ErrTypeBadRequest
 	ErrTypeInternal
 	ErrTypeEncoding
@@ -28,16 +22,22 @@ const (
 	ErrFailedToGetEvent       ErrorOccurredBecauseOf = "failed to get event"
 	ErrFailedToListEvents     ErrorOccurredBecauseOf = "failed to list events"
 	ErrFailedToEncodeResponse ErrorOccurredBecauseOf = "failed to encode response"
-	ErrInvalidPathParam       ErrorOccurredBecauseOf = "invalid path parameter"
 )
 
 // RequestError provides structured error information for API failures.
 type RequestError struct {
-	TypeOfError            TypeOfError
+	TypeOfError            internal.TypeOfError
 	ErrorOccurredBecauseOf ErrorOccurredBecauseOf
 	Resource               string // e.g. "event"
 	ResourceID             string // e.g. the id from the path — empty for list operations
 	Err                    error
+}
+
+type ErrorResponse struct {
+	Status    int    `json:"status"`
+	Error     string `json:"error"`
+	Message   string `json:"message,omitempty"`
+	RequestID string `json:"request_id,omitempty"`
 }
 
 func (e RequestError) Error() string {
@@ -69,4 +69,15 @@ func httpStatus(err error) int {
 	}
 
 	return http.StatusInternalServerError
+}
+
+func writeError(w http.ResponseWriter, r *http.Request, status int, message string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(ErrorResponse{
+		Status:    status,
+		Error:     http.StatusText(status),
+		Message:   message,
+		RequestID: requestIDFromContext(r.Context()),
+	})
 }

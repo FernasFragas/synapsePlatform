@@ -4,6 +4,7 @@ package ingestor
 import (
 	"errors"
 	"fmt"
+	"synapsePlatform/internal"
 )
 
 // Common errors for the ingestor.
@@ -13,14 +14,11 @@ var (
 	ErrMissingFieldDeviceID  = errors.New("missing required field DeviceId")
 	ErrMissingFieldType      = errors.New("missing field Type")
 	ErrMissingFieldTimestamp = errors.New("missing field Timestamp")
-	ErrEventNotFound = errors.New("event not found")
+	ErrEventNotFound         = errors.New("event not found")
 )
 
-// TypeOfError classifies error types.
-type TypeOfError int
-
 const (
-	ErrValidatingMsg TypeOfError = iota
+	ErrValidatingMsg internal.TypeOfError = iota
 	ErrStoringMsg
 	ErrProcessingMsg
 	ErrPollingMsg
@@ -45,7 +43,7 @@ const (
 
 // ProcessorError provides detailed field extraction error info
 type ProcessorError struct {
-	TypeOfError            TypeOfError
+	TypeOfError            internal.TypeOfError
 	ErrorOccurredBecauseOf ErrorOccurredBecauseOf
 	Field                  string
 	Expected               string

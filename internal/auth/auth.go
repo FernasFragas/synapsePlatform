@@ -1,7 +1,6 @@
 //go:generate mockgen -source=$GOFILE -destination=../utilstest/mocksgen/auth/mocked_auth.go
 package auth
 
-
 import (
 	"context"
 	"slices"

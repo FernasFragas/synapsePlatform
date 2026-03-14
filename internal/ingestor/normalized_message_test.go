@@ -140,9 +140,9 @@ func (s *NormalizedMessageTestSuite) TestEnergyReading_Normalize_NegativeValues_
 
 	// Assert
 	s.NoError(err)
-	s.Equal(float64(0), er.PowerW,    "negative PowerW should be clamped to 0")
-	s.Equal(float64(0), er.EnergyWh,  "negative EnergyWh should be clamped to 0")
-	s.Equal(float32(0), er.VoltageV,  "negative VoltageV should be clamped to 0")
+	s.Equal(float64(0), er.PowerW, "negative PowerW should be clamped to 0")
+	s.Equal(float64(0), er.EnergyWh, "negative EnergyWh should be clamped to 0")
+	s.Equal(float32(0), er.VoltageV, "negative VoltageV should be clamped to 0")
 	s.Equal(float32(0), er.CurrentMA, "negative CurrentMA should be clamped to 0")
 }
 
@@ -262,9 +262,9 @@ func (s *NormalizedMessageTestSuite) TestFinancialTransaction_Normalize_AllField
 
 	// Assert
 	s.NoError(err)
-	s.Equal("EUR",     ft.Currency, "currency should be uppercased")
-	s.Equal("pending", ft.Status,   "status should be lowercased")
-	s.Equal("Globex",  ft.Merchant, "merchant should be trimmed")
+	s.Equal("EUR", ft.Currency, "currency should be uppercased")
+	s.Equal("pending", ft.Status, "status should be lowercased")
+	s.Equal("Globex", ft.Merchant, "merchant should be trimmed")
 }
 
 func (s *NormalizedMessageTestSuite) TestFinancialTransaction_Validate_InvalidStatus_ReturnsError() {

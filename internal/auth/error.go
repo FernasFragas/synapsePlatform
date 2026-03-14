@@ -3,16 +3,13 @@ package auth
 import (
 	"errors"
 	"fmt"
+	"synapsePlatform/internal"
 
 	"github.com/golang-jwt/jwt/v5"
 )
 
-// TypeOfError classifies the category of auth failure.
-// Mirrors ingestor.TypeOfError and api.TypeOfError in intent.
-type TypeOfError int
-
 const (
-	ErrTypeTokenExpired TypeOfError = iota
+	ErrTypeTokenExpired internal.TypeOfError = iota
 	ErrTypeTokenNotYetValid
 	ErrTypeTokenInvalid
 	ErrTypeTokenWrongIssuer
@@ -44,7 +41,7 @@ const (
 
 // ValidationError provides structured error information for auth failures.
 type ValidationError struct {
-	TypeOfError            TypeOfError
+	TypeOfError            internal.TypeOfError
 	ErrorOccurredBecauseOf ErrorOccurredBecauseOf
 	Identity               string // e.g. "sub", "client_id", "iss", "aud" — empty otherwise
 	Err                    error
@@ -55,6 +52,7 @@ func (e ValidationError) Error() string {
 		return fmt.Sprintf("Identity '%s': %s; cause: %s",
 			e.Identity, e.ErrorOccurredBecauseOf, e.Err)
 	}
+	
 	return fmt.Sprintf("auth: %s; cause: %s", e.ErrorOccurredBecauseOf, e.Err)
 }
 

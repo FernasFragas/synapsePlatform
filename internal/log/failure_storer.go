@@ -7,9 +7,9 @@ import (
 )
 
 type FailureStorer struct {
-	logger  *slog.Logger
+	logger *slog.Logger
 
-	storer  ingestor.FailureStorer
+	storer ingestor.FailureStorer
 }
 
 func NewFailureStorer(logger *slog.Logger, storer ingestor.FailureStorer) *FailureStorer {
@@ -20,18 +20,18 @@ func (f *FailureStorer) StoreFailure(ctx context.Context, failed ingestor.Failed
 	err := f.storer.StoreFailure(ctx, failed)
 	if err != nil {
 		f.logger.Error("failed to store failure",
-			"stage",   failed.Stage,
+			"stage", failed.Stage,
 			"message", failed.Message,
-			"cause",   failed.Err,
-			"error",   err,
+			"cause", failed.Err,
+			"error", err,
 		)
 		return err
 	}
 
 	f.logger.Warn("failure stored",
-		"stage",   failed.Stage,
+		"stage", failed.Stage,
 		"message", failed.Message,
-		"cause",   failed.Err,
+		"cause", failed.Err,
 	)
 
 	return nil

@@ -38,7 +38,7 @@ func (mp *MessagePoller) PollMessage(ctx context.Context) (*ingestor.DeviceMessa
 
 	mp.logger.Info("polled message",
 		"device_id", msg.DeviceID,
-		"type",      msg.Type,
+		"type", msg.Type,
 		"timestamp", msg.Timestamp.String(),
 	)
 

@@ -23,18 +23,18 @@ func (e *EventTransformer) Transform(ctx context.Context, msg *ingestor.DeviceMe
 	if err != nil {
 		e.logger.Error("failed to transform message",
 			"device_id", msg.DeviceID,
-			"type",      msg.Type,
-			"error",     err,
+			"type", msg.Type,
+			"error", err,
 		)
 
 		return nil, err
 	}
 
 	e.logger.Info("message transformed",
-		"device_id",  msg.DeviceID,
-		"type",       msg.Type,
-		"event_id",   transformed.EventID,
-		"domain",     transformed.Domain,
+		"device_id", msg.DeviceID,
+		"type", msg.Type,
+		"event_id", transformed.EventID,
+		"domain", transformed.Domain,
 		"event_type", transformed.EventType,
 	)
 

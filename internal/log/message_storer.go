@@ -22,20 +22,20 @@ func (s *MessageStorer) StoreData(ctx context.Context, data *ingestor.BaseEvent)
 	err := s.storer.StoreData(ctx, data)
 	if err != nil {
 		s.logger.Error("failed to store event",
-			"event_id",   data.EventID,
-			"domain",     data.Domain,
+			"event_id", data.EventID,
+			"domain", data.Domain,
 			"event_type", data.EventType,
-			"error",      err,
+			"error", err,
 		)
 
 		return err
 	}
 
 	s.logger.Info("stored event",
-		"event_id",   data.EventID,
-		"domain",     data.Domain,
+		"event_id", data.EventID,
+		"domain", data.Domain,
 		"event_type", data.EventType,
-		"entity_id",  data.EntityID,
+		"entity_id", data.EntityID,
 	)
 
 	return nil
