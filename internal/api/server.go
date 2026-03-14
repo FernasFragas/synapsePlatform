@@ -14,7 +14,7 @@ import (
 
 type EventReader interface {
 	GetEvent(ctx context.Context, eventID string) (*ingestor.BaseEvent, error)
-	ListEvents(ctx context.Context) ([]*ingestor.BaseEvent, error)
+	ListEvents(ctx context.Context, page ingestor.PageRequest) (*ingestor.PageResponse[*ingestor.BaseEvent], error)
 }
 
 type Server struct {
@@ -23,7 +23,7 @@ type Server struct {
 	events           EventReader
 	validator        auth.TokenValidator
 	loggerMiddleware Middleware
-	addr string
+	addr             string
 }
 
 func NewServer(cfg internal.ServerConfig, events EventReader, validator auth.TokenValidator, loggerMiddleware Middleware) *Server {

@@ -83,3 +83,13 @@ func ParseDataType(s string) DataTypes {
 
 	return DataTypeUnknown
 }
+
+type PageRequest struct {
+	Cursor string
+	Limit  int
+}
+type PageResponse[T any] struct {
+	Items      []T
+	NextCursor string
+	HasMore    bool
+}

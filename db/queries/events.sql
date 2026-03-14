@@ -33,5 +33,15 @@ DELETE FROM events WHERE event_id = ?;
 -- name: GetEvent :one
 SELECT * FROM events WHERE event_id = ? LIMIT 1;
 
--- name: ListEvents :many
-SELECT * FROM events ORDER BY ingested_at DESC;
+-- name: ListEventsFirstPage :many
+SELECT * FROM events
+ORDER BY ingested_at DESC, event_id DESC
+LIMIT ?;
+
+-- name: ListEventsAfterCursor :many
+SELECT * FROM events
+WHERE (ingested_at, event_id) < (?, ?)
+ORDER BY ingested_at DESC, event_id DESC
+LIMIT ?;
+
+CREATE INDEX IF NOT EXISTS idx_ingested_event ON events(ingested_at DESC, event_id DESC);
