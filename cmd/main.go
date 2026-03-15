@@ -3,71 +3,52 @@ package main
 import (
 	"context"
 	"database/sql"
-	"log"
+	"fmt"
 	"log/slog"
 	"os"
 	"os/signal"
 	"synapsePlatform/internal"
+	"synapsePlatform/internal/api"
+	"synapsePlatform/internal/auth"
 	"synapsePlatform/internal/ingestor"
+	"synapsePlatform/internal/kafka"
 	synnapLog "synapsePlatform/internal/log"
 	"synapsePlatform/internal/sqllite"
 	"syscall"
+
+	"golang.org/x/sync/errgroup"
 )
 
-type application struct {
-	db       *sqllite.Repo
-	consumer ingestor.MessagePoller
-}
-
 func main() {
-	// Setup context for graceful shutdown
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	// Configure Kafka msgPoller
-	kafkaConfig := internal.StreamingConfigs{
-		Brokers:  []string{"localhost:9092"},
-		GroupID:  "synapse-platform-msgPoller",
-		MinBytes: 10e3, // 10KB
-		MaxBytes: 10e6, // 10MB
+	cfg, err := internal.LoadConfig("config.yaml")
+	if err != nil {
+		slog.Error("Failed to load config", "error", err)
+		os.Exit(1)
 	}
 
-	// create logger
 	baseHandler := slog.NewJSONHandler(os.Stdout, nil)
 	safeHandler := synnapLog.NewRedactingHandler(baseHandler, synnapLog.Options{
-		RedactKeys:    []string{"token", "password", "secret", "authorization"},
-		MaxValueBytes: 512,
+		RedactKeys:    cfg.Log.RedactKeys,
+		MaxValueBytes: cfg.Log.MaxValueBytes,
 	})
 	logger := slog.New(safeHandler)
 
-	var (
-		processor   ingestor.DataProcessor
-		msgPoller   ingestor.MessagePoller
-		transformer ingestor.Transformer
-	)
-
-	// Create msgPoller
-	msgPoller = internal.NewConsumer(kafkaConfig)
-	msgPoller = synnapLog.NewMessagePoller(logger, msgPoller)
-	// Subscribe to the ingestion topic
-	if err := msgPoller.Subscribe(nil, "ingestion.raw"); err != nil {
-		log.Fatalf("Failed to subscribe to topics: %v", err)
+	kafkaConfig := kafka.StreamingConfigs{
+		Brokers:  cfg.Kafka.Brokers,
+		GroupID:  cfg.Kafka.GroupID,
+		MinBytes: cfg.Kafka.MinBytes,
+		MaxBytes: cfg.Kafka.MaxBytes,
 	}
 
-	// create processors for logging and process message
-	processor = ingestor.NewProcessor(msgPoller)
-	processor = synnapLog.NewIngestorProcessor(logger, processor)
-
-	// create storer for logging and storing message
-	// NewRepo database
-	db, err := sqllite.NewRepo("data.db")
+	db, err := sqllite.NewRepo(cfg.Database.Path)
 	if err != nil {
-		log.Fatalf("Failed to open database: %v", err)
+		logger.Error("Failed to open database", "error", err)
+
+		os.Exit(1)
 	}
 	defer func(Db *sql.DB) {
-		err := Db.Close()
-		if err != nil {
-			log.Fatalf("Failed to close DB because: %v", err)
+		if err := Db.Close(); err != nil {
+			logger.Error("Failed to close DB", "error", err)
 		}
 	}(db.Db)
 
@@ -75,35 +56,85 @@ func main() {
 
 	domains := ingestor.AllDataTypes()
 
-	// create transformers for logging and transform message
-	transformer = ingestor.NewMessageTransformer(domains)
-	transformer = synnapLog.NewEventTransformer(logger, transformer)
+	transformer := synnapLog.NewEventTransformer(logger, ingestor.NewMessageTransformer(domains))
 
-	// Create ingestor and start ingesting message
-	err = ingestor.New(ingestor.Config{CompatibleDataTypes: domains}, processor, storer, transformer).
-		Ingest(ctx)
+	var dbFailures ingestor.FailureStorer
+	dbFailures = sqllite.NewFailureStorer(db)
+	dbFailures = synnapLog.NewFailureStorer(logger.With("failures", "db"), dbFailures)
+
+	var kafkaFailures ingestor.FailureStorer
+	kafkaFailures = kafka.NewKafkaDLQ(cfg.Kafka.Brokers, cfg.Kafka.DLQTopics)
+	kafkaFailures = synnapLog.NewFailureStorer(logger.With("failures", "kafka"), kafkaFailures)
+
+	failures := ingestor.NewFallbackFailureStorer(dbFailures, kafkaFailures)
+
+	authenticator, err := auth.NewJWTValidator(
+		[]byte(cfg.Auth.JWT.Secret),
+		cfg.Auth.JWT.Issuer,
+		cfg.Auth.JWT.Audience,
+	)
 	if err != nil {
-		logger.Error("Ingest failed and exit", "error", err)
+		logger.Error("Failed to create JWT validator", "error", err)
+		os.Exit(1)
 	}
 
-	//onShutdown(func() {
-	//	cancel()
-	//	//_ = hz.Stop(ctx)
-	//	time.Sleep(5 * time.Second)
-	//}, logger)
+	eventReader := synnapLog.NewEventReader(logger, db)
 
-}
+	apiServer := api.NewServer(
+		cfg.Server,
+		eventReader,
+		authenticator,
+		synnapLog.NewHTTPHandlerLogger(logger),
+	)
 
-func onShutdown(fn func(), log *slog.Logger) {
-	ch := make(chan os.Signal, 1)
+	logger.Info("system starting",
+		"topics", cfg.Kafka.Topics,
+		"brokers", cfg.Kafka.Brokers,
+		"db", cfg.Database.Path,
+		"server", cfg.Server.Address,
+	)
 
-	signal.Notify(ch, syscall.SIGINT, syscall.SIGTERM)
+	g, ctx := errgroup.WithContext(context.Background())
 
-	go func() {
-		s := <-ch
+	g.Go(func() error {
+		ch := make(chan os.Signal, 1)
 
-		log.Info("got a exit signal", "signal", s.String())
+		signal.Notify(ch, syscall.SIGINT, syscall.SIGTERM)
 
-		fn()
-	}()
+		select {
+		case sig := <-ch:
+			logger.Info("received signal", "signal", sig.String())
+
+			return fmt.Errorf("received signal: %s", sig)
+		case <-ctx.Done():
+			return nil
+		}
+	})
+
+	for _, topic := range cfg.Kafka.Topics {
+		run := newIngestionPipeline(logger, kafkaConfig, topic, storer, transformer, failures, domains)
+
+		g.Go(func() error { return run(ctx) })
+	}
+
+	g.Go(func() error {
+		return apiServer.Start()
+	})
+
+	g.Go(func() error {
+		<-ctx.Done()
+
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), cfg.Server.Shutdown.Timeout)
+
+		defer cancel()
+
+		return apiServer.Shutdown(shutdownCtx)
+	})
+
+	waitErr := g.Wait()
+	if waitErr != nil {
+		logger.Error("shutdown", "reason", waitErr)
+	} else {
+		logger.Info("system stopped gracefully")
+	}
 }

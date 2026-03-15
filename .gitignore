@@ -12,7 +12,7 @@
 # VSCode
 .vscode/
 
-internal/mocks/*
+internal/utilstest/mocksgen
 
 #binary
 bin/
