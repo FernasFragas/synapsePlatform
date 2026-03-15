@@ -10,6 +10,7 @@ type DeviceMessage struct {
 	Type      string         `json:"type"`
 	Timestamp time.Time      `json:"timestamp"`
 	Metrics   map[string]any `json:"metrics"`
+	Headers   map[string]string `json:"-"`
 }
 
 func (m *DeviceMessage) ValidateRawMessage() error {

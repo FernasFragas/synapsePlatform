@@ -83,10 +83,29 @@ func (v *JWTValidator) Validate(tokenString string) (Identity, error) {
 }
 
 func parseScopes(c jwt.MapClaims) []string {
-	raw, ok := c["scope"].(string)
-	if !ok || raw == "" {
+	switch v := c["scope"].(type) {
+	case string:
+		if v == "" {
+			return nil
+		}
+		return strings.Split(v, " ")
+
+	case []interface{}:
+		scopes := make([]string, 0, len(v))
+
+		for _, item := range v {
+			if s, ok := item.(string); ok && s != "" {
+				scopes = append(scopes, s)
+			}
+		}
+
+		if len(scopes) == 0 {
+			return nil
+		}
+
+		return scopes
+
+	default:
 		return nil
 	}
-
-	return strings.Split(raw, " ")
 }

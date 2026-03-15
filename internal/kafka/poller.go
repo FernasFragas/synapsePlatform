@@ -59,10 +59,10 @@ func (c *KafkaConsumer) PollMessage(ctx context.Context) (*ingestor.DeviceMessag
 			return nil, err
 		}
 
+		deviceMessage.Headers = c.convertHeaders(kafkaMsg.Headers)
+
 		return &deviceMessage, nil
 	}
-
-	return nil, nil
 }
 
 // Close gracefully shuts down all reader
