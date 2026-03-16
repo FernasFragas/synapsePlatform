@@ -24,6 +24,40 @@ Synapse Platform ingests heterogeneous event streams from multiple sources, tran
 - **Structured Logging** - Decorator-based logging on every component using `log/slog`
 - **Pluggable Components** - Interface-based design; every dependency is injected, never global
 
+
+### Observability
+- **Structured Logging** - JSON output via `log/slog` with decorator-based logging on every pipeline component
+- **Sensitive Data Redaction** - Configurable key redaction (`token`, `password`, `secret`, `authorization`) and value truncation at the log handler level; secrets never reach log output
+- **Distributed Tracing** - OpenTelemetry spans on every HTTP request and pipeline stage, with pluggable backends (stdout for dev, OTLP/HTTP for Jaeger or Tempo in production)
+- **Metrics** - Prometheus-compatible metrics via OpenTelemetry SDK (request duration, request counts, error rates, health check latency)
+### Resilience
+- **Dead Letter Queue** - Failed messages are persisted to SQLite (primary) with automatic fallback to a Kafka DLQ topic (secondary); messages are never silently dropped
+- **Graceful Shutdown** - SIGINT/SIGTERM signal handling with `errgroup`-based goroutine coordination and configurable shutdown timeout
+- **Panic Recovery** - Middleware catches panics and returns structured 500 responses instead of crashing the process
+- **Rate Limiting** - Token bucket rate limiter with configurable requests-per-second and burst, returning `429` with `Retry-After` header
+### Health & Readiness
+| Endpoint | Purpose | Behavior |
+|---|---|---|
+| `GET /livez` | Liveness probe | Always returns `200` — confirms the process is running |
+| `GET /readyz` | Readiness probe | Checks DB connectivity and Kafka consumer staleness; returns `503` if any probe fails |
+| `GET /healthz` | Health check | Same as `/readyz` (alias for compatibility) |
+Each probe runs with a 2-second timeout. Kafka health is determined by time since last successful poll (threshold: 2 minutes).
+### Security
+- **JWT Authentication** - HS256-signed tokens with issuer, audience, and expiration validation
+- **Scope-Based Authorization** - Endpoints require specific scopes (e.g., `read:events`)
+- **Log Redaction** - Sensitive attributes are replaced with `[REDACTED]` before reaching any log output
+- **Distroless Container** - Runtime image has no shell, no package manager, runs as `nonroot:nonroot`
+- **CI Security Gates** - `govulncheck` for vulnerability scanning, dependency review blocking High/Critical CVEs, GPL/AGPL license denial
+### HTTP Middleware Chain
+Requests pass through middleware in this order (outermost to innermost):
+1. **Panic Recovery** - Catches panics, returns structured error response
+2. **Request ID** - Assigns or propagates `X-Request-ID` header
+3. **Trace Request** - Creates OpenTelemetry span with W3C TraceContext propagation
+4. **Rate Limiter** - Token bucket check (before auth to save compute on rejected requests)
+5. **CORS** - Origin validation with configurable allowed origins
+6. **Logger** - HTTP request/response logging
+7. **Authenticate** - JWT Bearer token validation and identity extraction
+
 ## Prerequisites
 
 | Tool | Version | Install |
@@ -88,47 +122,60 @@ Using [jwt.io](https://jwt.io):
 #### List Events
 
 ```
-GET /events
+GET /v1/events?limit=20&cursor=<cursor>
 ```
 
 Returns all stored events.
 
 ```bash
-curl http://localhost:8080/events \
+curl http://localhost:8080/v1/events \
   -H "Authorization: Bearer <token>"
 ```
 
 #### Get Event by ID
 
 ```
-GET /events/{id}
+GET /v1/events/{id}
 ```
 
 Returns a single event by its ID.
 
 ```bash
-curl http://localhost:8080/events/some-event-id \
+curl http://localhost:8080/v1/events/some-event-id \
   -H "Authorization: Bearer <token>"
 ```
 
 ### Response Format
 
 ```json
-[
-  {
-    "event_id": "550e8400-e29b-41d4-a716-446655440000",
-    "domain": "iot",
-    "event_type": "temperature_reading",
-    "entity_id": "sensor-42",
-    "occurred_at": "2025-01-15T10:30:00Z",
-    "source": "env-sensor",
-    "schema_version": "1.0",
-    "data": {}
-  }
-]
+{
+  "data": [
+    {
+      "event_id": "550e8400-e29b-41d4-a716-446655440000",
+      "domain": "iot",
+      "event_type": "temperature_reading",
+      "entity_id": "sensor-42",
+      "occurred_at": "2025-01-15T10:30:00Z",
+      "source": "env-sensor",
+      "schema_version": "1.0",
+      "data": {}
+    }
+  ],
+  "next_cursor": "...",
+  "has_more": true
+}
 ```
 
 ### Error Responses
+
+```json
+{
+  "status": 404,
+  "error": "not_found",
+  "message": "event not found",
+  "request_id": "550e8400-..."
+}
+```
 
 | Status | Cause                                      |
 |--------|--------------------------------------------|
