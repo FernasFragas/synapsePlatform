@@ -11,18 +11,21 @@ import (
 func (s *Server) handleListEvents(w http.ResponseWriter, r *http.Request) {
 	identity, err := auth.IdentityFromContext(r.Context())
 	if err != nil {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		writeError(w, r, http.StatusUnauthorized, "unauthorized")
 
 		return
 	}
 
 	if !identity.HasScope("read:events") {
-		http.Error(w, "forbidden", http.StatusForbidden)
+		writeError(w, r, http.StatusForbidden, "forbidden")
 
 		return
 	}
 
-	events, err := s.events.ListEvents(r.Context())
+	events, err := s.events.ListEvents(r.Context(), ingestor.PageRequest{
+		Cursor: r.URL.Query().Get("cursor"),
+		Limit:  parseIntOrDefault(r.URL.Query().Get("limit"), 20),
+	})
 	if err != nil {
 		reqErr := RequestError{
 			TypeOfError:            ErrTypeInternal,
@@ -31,13 +34,18 @@ func (s *Server) handleListEvents(w http.ResponseWriter, r *http.Request) {
 			Err:                    err,
 		}
 
-		http.Error(w, reqErr.Error(), httpStatus(reqErr))
+		writeError(w, r, httpStatus(reqErr), string(reqErr.ErrorOccurredBecauseOf))
 
 		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(toResponses(events)); err != nil {
+	err = json.NewEncoder(w).Encode(ListResponse{
+		Data:       toResponses(events.Items),
+		NextCursor: events.NextCursor,
+		HasMore:    events.HasMore,
+	})
+	if err != nil {
 		reqErr := RequestError{
 			TypeOfError:            ErrTypeEncoding,
 			ErrorOccurredBecauseOf: ErrFailedToEncodeResponse,
@@ -45,20 +53,20 @@ func (s *Server) handleListEvents(w http.ResponseWriter, r *http.Request) {
 			Err:                    err,
 		}
 
-		http.Error(w, reqErr.Error(), httpStatus(reqErr))
+		writeError(w, r, httpStatus(reqErr), string(reqErr.ErrorOccurredBecauseOf))
 	}
 }
 
 func (s *Server) handleGetEvent(w http.ResponseWriter, r *http.Request) {
 	identity, err := auth.IdentityFromContext(r.Context())
 	if err != nil {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		writeError(w, r, http.StatusUnauthorized, "unauthorized")
 
 		return
 	}
 
 	if !identity.HasScope("read:events") {
-		http.Error(w, "forbidden", http.StatusForbidden)
+		writeError(w, r, http.StatusForbidden, "forbidden")
 
 		return
 	}
@@ -79,13 +87,15 @@ func (s *Server) handleGetEvent(w http.ResponseWriter, r *http.Request) {
 			ResourceID:             id,
 			Err:                    err,
 		}
-		http.Error(w, reqErr.Error(), httpStatus(reqErr))
+
+		writeError(w, r, httpStatus(reqErr), string(reqErr.ErrorOccurredBecauseOf))
 
 		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(toResponse(event)); err != nil {
+	err = json.NewEncoder(w).Encode(toResponse(event))
+	if err != nil {
 		// Encoding failure — resource was found but response couldn't be written
 		reqErr := RequestError{
 			TypeOfError:            ErrTypeEncoding,
@@ -94,27 +104,7 @@ func (s *Server) handleGetEvent(w http.ResponseWriter, r *http.Request) {
 			ResourceID:             id,
 			Err:                    err,
 		}
-		http.Error(w, reqErr.Error(), httpStatus(reqErr))
-	}
-}
 
-func toResponses(events []*ingestor.BaseEvent) []*EventResponse {
-	responses := make([]*EventResponse, len(events))
-	for i, event := range events {
-		responses[i] = toResponse(event)
-	}
-	return responses
-}
-
-func toResponse(event *ingestor.BaseEvent) *EventResponse {
-	return &EventResponse{
-		EventID:       event.EventID.String(),
-		Domain:        event.Domain,
-		EventType:     event.EventType,
-		EntityID:      event.EntityID,
-		OccurredAt:    event.OccurredAt,
-		Source:        event.Source,
-		SchemaVersion: event.SchemaVersion,
-		Data:          event.Data,
+		writeError(w, r, httpStatus(reqErr), string(reqErr.ErrorOccurredBecauseOf))
 	}
 }

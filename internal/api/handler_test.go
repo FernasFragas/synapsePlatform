@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"synapsePlatform/internal"
+	"synapsePlatform/internal/health"
 	"testing"
 	"time"
 
@@ -52,25 +53,29 @@ func (s *HandlerTestSuite) TestListEvents_ValidTokenWithScope_Returns200() {
 	s.withScope("read:events")
 	s.reader.WithEvents([]*ingestor.BaseEvent{validBaseEvent()})
 
-	srv := api.NewServer(testServerConfig(), s.reader, s.validator, noopMiddleware)
+	srv := api.NewServer(testServerConfig(), s.reader, s.validator, noopMiddleware, health.NewChecker(time.Second))
 	rec := httptest.NewRecorder()
-	srv.ServeHTTP(rec, s.authorizedRequest(http.MethodGet, "/events"))
+	srv.ServeHTTP(rec, s.authorizedRequest(http.MethodGet, "/v1/events"))
 
 	s.Equal(http.StatusOK, rec.Code)
 	s.Equal("application/json", rec.Header().Get("Content-Type"))
 
-	var body []map[string]any
+	var body struct {
+		Data       []map[string]any `json:"data"`
+		NextCursor string           `json:"next_cursor"`
+		HasMore    bool             `json:"has_more"`
+	}
 	s.Require().NoError(json.NewDecoder(rec.Body).Decode(&body))
-	s.Len(body, 1)
+	s.Len(body.Data, 1)
 }
 
 func (s *HandlerTestSuite) TestListEvents_EmptyStore_Returns200WithEmptyArray() {
 	s.withScope("read:events")
 	s.reader.WithEvents([]*ingestor.BaseEvent{})
 
-	srv := api.NewServer(testServerConfig(), s.reader, s.validator, noopMiddleware)
+	srv := api.NewServer(testServerConfig(), s.reader, s.validator, noopMiddleware, health.NewChecker(time.Second))
 	rec := httptest.NewRecorder()
-	srv.ServeHTTP(rec, s.authorizedRequest(http.MethodGet, "/events"))
+	srv.ServeHTTP(rec, s.authorizedRequest(http.MethodGet, "/v1/events"))
 
 	s.Equal(http.StatusOK, rec.Code)
 }
@@ -78,9 +83,9 @@ func (s *HandlerTestSuite) TestListEvents_EmptyStore_Returns200WithEmptyArray() 
 func (s *HandlerTestSuite) TestListEvents_MissingScope_Returns403() {
 	s.withScope() // valid token, no scopes
 
-	srv := api.NewServer(testServerConfig(), s.reader, s.validator, noopMiddleware)
+	srv := api.NewServer(testServerConfig(), s.reader, s.validator, noopMiddleware, health.NewChecker(time.Second))
 	rec := httptest.NewRecorder()
-	srv.ServeHTTP(rec, s.authorizedRequest(http.MethodGet, "/events"))
+	srv.ServeHTTP(rec, s.authorizedRequest(http.MethodGet, "/v1/events"))
 
 	s.Equal(http.StatusForbidden, rec.Code)
 }
@@ -88,9 +93,9 @@ func (s *HandlerTestSuite) TestListEvents_MissingScope_Returns403() {
 func (s *HandlerTestSuite) TestListEvents_WrongScope_Returns403() {
 	s.withScope("write:events") // wrong scope
 
-	srv := api.NewServer(testServerConfig(), s.reader, s.validator, noopMiddleware)
+	srv := api.NewServer(testServerConfig(), s.reader, s.validator, noopMiddleware, health.NewChecker(time.Second))
 	rec := httptest.NewRecorder()
-	srv.ServeHTTP(rec, s.authorizedRequest(http.MethodGet, "/events"))
+	srv.ServeHTTP(rec, s.authorizedRequest(http.MethodGet, "/v1/events"))
 
 	s.Equal(http.StatusForbidden, rec.Code)
 }
@@ -99,9 +104,9 @@ func (s *HandlerTestSuite) TestListEvents_StorageError_Returns500() {
 	s.withScope("read:events")
 	s.reader.WithListError(errors.New("db connection lost"))
 
-	srv := api.NewServer(testServerConfig(), s.reader, s.validator, noopMiddleware)
+	srv := api.NewServer(testServerConfig(), s.reader, s.validator, noopMiddleware, health.NewChecker(time.Second))
 	rec := httptest.NewRecorder()
-	srv.ServeHTTP(rec, s.authorizedRequest(http.MethodGet, "/events"))
+	srv.ServeHTTP(rec, s.authorizedRequest(http.MethodGet, "/v1/events"))
 
 	s.Equal(http.StatusInternalServerError, rec.Code)
 }
@@ -113,9 +118,9 @@ func (s *HandlerTestSuite) TestGetEvent_ValidTokenWithScope_Returns200() {
 	s.withScope("read:events")
 	s.reader.WithEvent(event)
 
-	srv := api.NewServer(testServerConfig(), s.reader, s.validator, noopMiddleware)
+	srv := api.NewServer(testServerConfig(), s.reader, s.validator, noopMiddleware, health.NewChecker(time.Second))
 	rec := httptest.NewRecorder()
-	srv.ServeHTTP(rec, s.authorizedRequest(http.MethodGet, "/events/"+event.EventID.String()))
+	srv.ServeHTTP(rec, s.authorizedRequest(http.MethodGet, "/v1/events/"+event.EventID.String()))
 
 	s.Equal(http.StatusOK, rec.Code)
 	s.Equal("application/json", rec.Header().Get("Content-Type"))
@@ -128,9 +133,9 @@ func (s *HandlerTestSuite) TestGetEvent_ValidTokenWithScope_Returns200() {
 func (s *HandlerTestSuite) TestGetEvent_MissingScope_Returns403() {
 	s.withScope("write:events")
 
-	srv := api.NewServer(testServerConfig(), s.reader, s.validator, noopMiddleware)
+	srv := api.NewServer(testServerConfig(), s.reader, s.validator, noopMiddleware, health.NewChecker(time.Second))
 	rec := httptest.NewRecorder()
-	srv.ServeHTTP(rec, s.authorizedRequest(http.MethodGet, "/events/some-id"))
+	srv.ServeHTTP(rec, s.authorizedRequest(http.MethodGet, "/v1/events/some-id"))
 
 	s.Equal(http.StatusForbidden, rec.Code)
 }
@@ -139,9 +144,9 @@ func (s *HandlerTestSuite) TestGetEvent_NotFound_Returns404() {
 	s.withScope("read:events")
 	s.reader.WithGetError(ingestor.ErrEventNotFound)
 
-	srv := api.NewServer(testServerConfig(), s.reader, s.validator, noopMiddleware)
+	srv := api.NewServer(testServerConfig(), s.reader, s.validator, noopMiddleware, health.NewChecker(time.Second))
 	rec := httptest.NewRecorder()
-	srv.ServeHTTP(rec, s.authorizedRequest(http.MethodGet, "/events/missing-id"))
+	srv.ServeHTTP(rec, s.authorizedRequest(http.MethodGet, "/v1/events/missing-id"))
 
 	s.Equal(http.StatusNotFound, rec.Code)
 }
@@ -151,9 +156,9 @@ func (s *HandlerTestSuite) TestGetEvent_StorageError_Returns500() {
 	// A non-not-found error — should be 500, not 404
 	s.reader.WithGetError(errors.New("db timeout"))
 
-	srv := api.NewServer(testServerConfig(), s.reader, s.validator, noopMiddleware)
+	srv := api.NewServer(testServerConfig(), s.reader, s.validator, noopMiddleware, health.NewChecker(time.Second))
 	rec := httptest.NewRecorder()
-	srv.ServeHTTP(rec, s.authorizedRequest(http.MethodGet, "/events/some-id"))
+	srv.ServeHTTP(rec, s.authorizedRequest(http.MethodGet, "/v1/events/some-id"))
 
 	s.Equal(http.StatusInternalServerError, rec.Code)
 }
@@ -178,5 +183,9 @@ func validBaseEvent() *ingestor.BaseEvent {
 func testServerConfig() internal.ServerConfig {
 	return internal.ServerConfig{
 		Address: ":0",
+		RateLimit: internal.RateLimitConfig{
+			RequestsPerSecond: 100,
+			Burst:             100,
+		},
 	}
 }

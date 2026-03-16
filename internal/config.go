@@ -13,6 +13,7 @@ type Config struct {
 	Auth     AuthConfig     `yaml:"auth"`
 	Kafka    KafkaConfig    `yaml:"kafka"`
 	Database DatabaseConfig `yaml:"database"`
+	Tracing  TracingConfig  `yaml:"tracing"`
 	Log      LogConfig      `yaml:"log"`
 }
 
@@ -32,9 +33,11 @@ func LoadConfig(path string) (Config, error) {
 }
 
 type ServerConfig struct {
-	Address  string         `yaml:"address"`
-	Timeouts ServerTimeouts `yaml:"timeouts"`
-	Shutdown ShutdownConfig `yaml:"shutdown"`
+	Address   string          `yaml:"address"`
+	Timeouts  ServerTimeouts  `yaml:"timeouts"`
+	Shutdown  ShutdownConfig  `yaml:"shutdown"`
+	CORS      CORSConfig      `yaml:"cors"`
+	RateLimit RateLimitConfig `yaml:"rate_limit"`
 }
 
 type ServerTimeouts struct {
@@ -47,6 +50,15 @@ type ServerTimeouts struct {
 type ShutdownConfig struct {
 	Timeout     time.Duration `yaml:"timeout"`
 	GracePeriod time.Duration `yaml:"grace_period"`
+}
+
+type CORSConfig struct {
+	AllowedOrigins []string `yaml:"allowed_origins"`
+}
+
+type RateLimitConfig struct {
+	RequestsPerSecond float64 `yaml:"requests_per_second"`
+	Burst             int     `yaml:"burst"`
 }
 
 type AuthConfig struct {
@@ -63,7 +75,7 @@ type KafkaConfig struct {
 	Brokers   []string `yaml:"brokers"`
 	GroupID   string   `yaml:"group_id"`
 	Topics    []string `yaml:"topics"`
-	DLQTopics string `yaml:"dlq_topic"`
+	DLQTopics string   `yaml:"dlq_topic"`
 	MinBytes  int      `yaml:"min_bytes"`
 	MaxBytes  int      `yaml:"max_bytes"`
 }
@@ -75,4 +87,8 @@ type DatabaseConfig struct {
 type LogConfig struct {
 	RedactKeys    []string `yaml:"redact_keys"`
 	MaxValueBytes int      `yaml:"max_value_bytes"`
+}
+
+type TracingConfig struct {
+	Endpoint string `yaml:"endpoint"`
 }

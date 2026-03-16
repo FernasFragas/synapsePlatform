@@ -8,6 +8,13 @@ server:
   shutdown:
     timeout: 10s
     grace_period: 5s
+  cors:
+    allowed_origins:
+      - "http://localhost:3000"
+      - "https://dashboard.example.com"
+  rate_limit:
+    requests_per_second: 10
+    burst: 20
 
 auth:
   jwt:
@@ -36,3 +43,13 @@ log:
     - "secret"
     - "authorization"
   max_value_bytes: 512
+
+# Print spans to stdout (for local debugging)
+tracing:
+  endpoint: "stdout"
+# Send to Jaeger/Tempo/Collector via OTLP
+#tracing:
+#  endpoint: "http://localhost:4318/v1/traces"
+# Disable tracing entirely (no-op, zero overhead)
+#tracing:
+#  endpoint: ""
