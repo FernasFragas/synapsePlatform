@@ -1,0 +1,10 @@
+{
+  "device_id":      "env-sensor-building-a-floor-2",
+  "type":           "temperature_sensor",
+  "timestamp":      "2024-01-05T14:35:22Z",
+  "metrics": {
+    "temperature_c":    22.8,
+    "humidity_percent": 55.2,
+    "air_quality_index": 34
+  }
+}
