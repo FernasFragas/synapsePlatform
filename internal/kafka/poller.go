@@ -1,10 +1,12 @@
-//go:generate mockgen -source=$GOFILE -destination=../internal/utilstest/mocksgen/mocked_$GOFILE
+//go:generate mockgen -source=$GOFILE -destination=../utilstest/mocksgen/kafka/mocked_$GOFILE
 package kafka
 
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"synapsePlatform/internal/ingestor"
+	"sync"
 	"time"
 
 	"github.com/segmentio/kafka-go"
@@ -14,6 +16,10 @@ import (
 type KafkaConsumer struct {
 	reader *kafka.Reader
 	config StreamingConfigs
+
+	mu       sync.Mutex
+	lastPoll time.Time
+	maxStale time.Duration
 }
 
 // StreamingConfigs holds configuration for message broker connections.
@@ -25,24 +31,24 @@ type StreamingConfigs struct {
 	MaxBytes int
 }
 
-// NewConsumer creates a new Kafka consumer
-func NewConsumer(config StreamingConfigs, topic string) *KafkaConsumer {
+func NewConsumer(config StreamingConfigs, topic string, maxStale time.Duration) *KafkaConsumer {
 	reader := kafka.NewReader(kafka.ReaderConfig{
 		Brokers:        config.Brokers,
 		GroupID:        config.GroupID,
 		Topic:          topic,
 		MinBytes:       config.MinBytes,
 		MaxBytes:       config.MaxBytes,
-		CommitInterval: time.Second, // tune
+		CommitInterval: time.Second,
 	})
 
 	return &KafkaConsumer{
-		config: config,
-		reader: reader,
+		config:   config,
+		reader:   reader,
+		lastPoll: time.Now(),
+		maxStale: maxStale,
 	}
 }
 
-// PollMessage begins consuming messages, calling handler for each message
 func (c *KafkaConsumer) PollMessage(ctx context.Context) (*ingestor.DeviceMessage, error) {
 	select {
 	case <-ctx.Done():
@@ -53,9 +59,12 @@ func (c *KafkaConsumer) PollMessage(ctx context.Context) (*ingestor.DeviceMessag
 			return nil, err
 		}
 
+		c.mu.Lock()
+		c.lastPoll = time.Now()
+		c.mu.Unlock()
+
 		var deviceMessage ingestor.DeviceMessage
-		err = json.Unmarshal(kafkaMsg.Value, &deviceMessage)
-		if err != nil {
+		if err := json.Unmarshal(kafkaMsg.Value, &deviceMessage); err != nil {
 			return nil, err
 		}
 
@@ -65,21 +74,30 @@ func (c *KafkaConsumer) PollMessage(ctx context.Context) (*ingestor.DeviceMessag
 	}
 }
 
-// Close gracefully shuts down all reader
-func (c *KafkaConsumer) Close(context.Context) error {
-	if err := c.reader.Close(); err != nil {
-		return err
+func (c *KafkaConsumer) Name() string { return "kafka" }
+
+func (c *KafkaConsumer) Check(_ context.Context) error {
+	c.mu.Lock()
+	last := c.lastPoll
+	c.mu.Unlock()
+
+	stale := time.Since(last)
+	if stale > c.maxStale {
+		return fmt.Errorf("last successful poll %s ago (threshold %s)",
+			stale.Round(time.Second), c.maxStale)
 	}
 
 	return nil
 }
 
-// convertHeaders converts Kafka headers to generic map
+func (c *KafkaConsumer) Close(context.Context) error {
+	return c.reader.Close()
+}
+
 func (c *KafkaConsumer) convertHeaders(kafkaHeaders []kafka.Header) map[string]string {
 	headers := make(map[string]string)
 	for _, h := range kafkaHeaders {
 		headers[h.Key] = string(h.Value)
 	}
-
 	return headers
 }
