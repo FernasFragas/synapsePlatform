@@ -33,15 +33,25 @@ func (e *EventReader) GetEvent(ctx context.Context, eventID string) (*ingestor.B
 	return event, nil
 }
 
-func (e *EventReader) ListEvents(ctx context.Context) ([]*ingestor.BaseEvent, error) {
-	events, err := e.api.ListEvents(ctx)
+func (e *EventReader) ListEvents(
+	ctx context.Context,
+	page ingestor.PageRequest) (*ingestor.PageResponse[*ingestor.BaseEvent], error) {
+	events, err := e.api.ListEvents(ctx, page)
 	if err != nil {
-		e.logger.Error("failed to list events", "error", err)
-
+		e.logger.Error("failed to list events",
+			"cursor", page.Cursor,
+			"limit", page.Limit,
+			"error", err,
+		)
 		return nil, err
 	}
 
-	e.logger.Info("listed events", "count", len(events))
+	e.logger.Info("listed events",
+		"count", len(events.Items),
+		"has_more", events.HasMore,
+		"cursor", page.Cursor,
+		"limit", page.Limit,
+	)
 
 	return events, nil
 }

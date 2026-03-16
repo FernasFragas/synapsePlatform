@@ -1,4 +1,4 @@
-.PHONY: help run build lint test clean docker-up docker-down docker-logs kafka-create-topic kafka-test-message sqlc-generate
+.PHONY: help run build lint test clean docker-up docker-down docker-logs kafka-create-topic kafka-test-message sqlc-generate jaeger-up jaeger-down jaeger-logs
 
 # Default target
 .DEFAULT_GOAL := help
@@ -171,9 +171,9 @@ clean:
 	@rm -f data.db
 	@echo "✅ Cleaned"
 
-## dev: Start development environment (Docker + App)
-dev: docker-up
-	@echo "⏳ Waiting for services to be ready..."
+## dev: Start development environment (Docker + Jaeger + App)
+dev: docker-up jaeger-up
+	@echo "Waiting for services to be ready..."
 	@sleep 10
 	@$(MAKE) run
 
@@ -189,3 +189,23 @@ install-tools:
 ## all: Run fmt, lint, test, and build
 all: fmt lint test build
 	@echo "✅ All tasks complete"
+
+## jaeger-up: Start Jaeger for local trace collection (OTLP on :4318, UI on :16686)
+jaeger-up:
+	@echo "Starting Jaeger..."
+	@docker run -d --name jaeger \
+		-p 4318:4318 \
+		-p 16686:16686 \
+		jaegertracing/all-in-one:latest
+	@echo "Jaeger UI: http://localhost:16686"
+
+## jaeger-down: Stop and remove Jaeger container
+jaeger-down:
+	@echo "Stopping Jaeger..."
+	@docker rm -f jaeger 2>/dev/null || true
+	@echo "Jaeger stopped"
+
+## jaeger-logs: Show Jaeger container logs
+jaeger-logs:
+	@docker logs -f jaeger
+

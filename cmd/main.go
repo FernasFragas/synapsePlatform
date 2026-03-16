@@ -10,11 +10,14 @@ import (
 	"synapsePlatform/internal"
 	"synapsePlatform/internal/api"
 	"synapsePlatform/internal/auth"
+	"synapsePlatform/internal/health"
 	"synapsePlatform/internal/ingestor"
 	"synapsePlatform/internal/kafka"
 	synnapLog "synapsePlatform/internal/log"
+	"synapsePlatform/internal/metrics"
 	"synapsePlatform/internal/sqllite"
 	"syscall"
+	"time"
 
 	"golang.org/x/sync/errgroup"
 )
@@ -33,6 +36,16 @@ func main() {
 	})
 	logger := slog.New(safeHandler)
 
+	providers, err := metrics.NewProviders(context.Background(), "synapse-platform", cfg.Tracing.Endpoint)
+	if err != nil {
+		logger.Error("Failed to create observability providers", "error", err)
+		os.Exit(1)
+	}
+	defer providers.Shutdown(context.Background())
+
+	meter := providers.Meter.Meter("synapse-platform")
+	tracer := providers.Tracer.Tracer("synapse-platform")
+
 	kafkaConfig := kafka.StreamingConfigs{
 		Brokers:  cfg.Kafka.Brokers,
 		GroupID:  cfg.Kafka.GroupID,
@@ -46,6 +59,7 @@ func main() {
 
 		os.Exit(1)
 	}
+
 	defer func(Db *sql.DB) {
 		if err := Db.Close(); err != nil {
 			logger.Error("Failed to close DB", "error", err)
@@ -53,20 +67,27 @@ func main() {
 	}(db.Db)
 
 	storer := synnapLog.NewMessageStorer(logger, db)
+	metricsStore, err := metrics.NewMessageStorer(meter, tracer, storer)
+	if err != nil {
+		logger.Error("failed to build metric storer", "error", err)
+
+		os.Exit(1)
+	}
 
 	domains := ingestor.AllDataTypes()
-
 	transformer := synnapLog.NewEventTransformer(logger, ingestor.NewMessageTransformer(domains))
+	metricsTransformer, err := metrics.NewEventTransformer(meter, tracer, transformer)
+	if err != nil {
+		logger.Error("failed to build metrics transformer", "error", err)
 
-	var dbFailures ingestor.FailureStorer
-	dbFailures = sqllite.NewFailureStorer(db)
-	dbFailures = synnapLog.NewFailureStorer(logger.With("failures", "db"), dbFailures)
+		os.Exit(1)
+	}
 
 	var kafkaFailures ingestor.FailureStorer
 	kafkaFailures = kafka.NewKafkaDLQ(cfg.Kafka.Brokers, cfg.Kafka.DLQTopics)
-	kafkaFailures = synnapLog.NewFailureStorer(logger.With("failures", "kafka"), kafkaFailures)
+	kafkaFailures = synnapLog.NewFailurePublisher(logger.With("failures", "kafka"), kafkaFailures)
 
-	failures := ingestor.NewFallbackFailureStorer(dbFailures, kafkaFailures)
+	failures := ingestor.NewFallbackFailureStorer(storer, kafkaFailures)
 
 	authenticator, err := auth.NewJWTValidator(
 		[]byte(cfg.Auth.JWT.Secret),
@@ -75,16 +96,63 @@ func main() {
 	)
 	if err != nil {
 		logger.Error("Failed to create JWT validator", "error", err)
+
 		os.Exit(1)
 	}
 
 	eventReader := synnapLog.NewEventReader(logger, db)
+	metricsEventReader, err := metrics.NewAPI(meter, tracer, eventReader)
+	if err != nil {
+		logger.Error("failed to build metrics event reader", "error", err)
+
+		os.Exit(1)
+	}
+
+	// Health probes — db and kafka are the same objects used for business logic.
+	// No separate wrapper: db *is* a Probe, each consumer *is* a Probe.
+	healthLogger := logger.With("component", "health")
+	var dbProbe health.Probe = db
+	dbProbe = synnapLog.NewHealthProbe(healthLogger, dbProbe)
+	// Collect kafka consumer probes as we build pipelines
+	var kafkaProbes []health.Probe
+
+	g, ctx := errgroup.WithContext(context.Background())
+
+	g.Go(func() error {
+		ch := make(chan os.Signal, 1)
+		signal.Notify(ch, syscall.SIGINT, syscall.SIGTERM)
+
+		select {
+		case sig := <-ch:
+			logger.Info("received signal", "signal", sig.String())
+			return fmt.Errorf("received signal: %s", sig)
+		case <-ctx.Done():
+			return nil
+		}
+	})
+
+	for _, topic := range cfg.Kafka.Topics {
+		consumer := kafka.NewConsumer(kafkaConfig, topic, 2*time.Minute)
+		var consumerProbe health.Probe = consumer
+
+		consumerProbe = synnapLog.NewHealthProbe(healthLogger, consumerProbe)
+		kafkaProbes = append(kafkaProbes, consumerProbe)
+
+		run := newIngestionPipeline(logger, meter, tracer, consumer, metricsStore, metricsTransformer, failures, domains)
+
+		g.Go(func() error { return run(ctx) })
+	}
+
+	// Build health checker with all probes
+	allProbes := append([]health.Probe{dbProbe}, kafkaProbes...)
+	checker := health.NewChecker(2*time.Second, allProbes...)
 
 	apiServer := api.NewServer(
 		cfg.Server,
-		eventReader,
+		metricsEventReader,
 		authenticator,
 		synnapLog.NewHTTPHandlerLogger(logger),
+		checker,
 	)
 
 	logger.Info("system starting",
@@ -93,29 +161,6 @@ func main() {
 		"db", cfg.Database.Path,
 		"server", cfg.Server.Address,
 	)
-
-	g, ctx := errgroup.WithContext(context.Background())
-
-	g.Go(func() error {
-		ch := make(chan os.Signal, 1)
-
-		signal.Notify(ch, syscall.SIGINT, syscall.SIGTERM)
-
-		select {
-		case sig := <-ch:
-			logger.Info("received signal", "signal", sig.String())
-
-			return fmt.Errorf("received signal: %s", sig)
-		case <-ctx.Done():
-			return nil
-		}
-	})
-
-	for _, topic := range cfg.Kafka.Topics {
-		run := newIngestionPipeline(logger, kafkaConfig, topic, storer, transformer, failures, domains)
-
-		g.Go(func() error { return run(ctx) })
-	}
 
 	g.Go(func() error {
 		return apiServer.Start()
