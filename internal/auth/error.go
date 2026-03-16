@@ -52,7 +52,7 @@ func (e ValidationError) Error() string {
 		return fmt.Sprintf("Identity '%s': %s; cause: %s",
 			e.Identity, e.ErrorOccurredBecauseOf, e.Err)
 	}
-	
+
 	return fmt.Sprintf("auth: %s; cause: %s", e.ErrorOccurredBecauseOf, e.Err)
 }
 

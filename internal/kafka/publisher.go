@@ -1,3 +1,4 @@
+//go:generate mockgen -source=$GOFILE -destination=../utilstest/mocksgen/kafka/mocked_$GOFILE
 package kafka
 
 import (

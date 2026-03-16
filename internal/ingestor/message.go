@@ -6,10 +6,10 @@ import (
 )
 
 type DeviceMessage struct {
-	DeviceID  string         `json:"device_id"`
-	Type      string         `json:"type"`
-	Timestamp time.Time      `json:"timestamp"`
-	Metrics   map[string]any `json:"metrics"`
+	DeviceID  string            `json:"device_id"`
+	Type      string            `json:"type"`
+	Timestamp time.Time         `json:"timestamp"`
+	Metrics   map[string]any    `json:"metrics"`
 	Headers   map[string]string `json:"-"`
 }
 

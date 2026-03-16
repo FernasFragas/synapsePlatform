@@ -153,8 +153,33 @@ func (db *Repo) ListEvents(ctx context.Context, page ingestor.PageRequest) (*ing
 	}, nil
 }
 
+func (db *Repo) StoreFailure(ctx context.Context, failed ingestor.FailedMessage) error {
+	var msgJSON []byte
+	if failed.Message != nil {
+		msgJSON, _ = json.Marshal(failed.Message)
+	}
+
+	var errText string
+	if failed.Err != nil {
+		errText = failed.Err.Error()
+	}
+
+	_, err := db.Db.ExecContext(ctx,
+		`INSERT INTO failed_messages (stage, message, error, created_at) VALUES (?, ?, ?, datetime('now'))`,
+		failed.Stage, string(msgJSON), errText,
+	)
+
+	return err
+}
+
 func (db *Repo) Close() error {
 	return db.Db.Close()
+}
+
+func (db *Repo) Name() string { return "db" }
+
+func (db *Repo) Check(ctx context.Context) error {
+	return db.Db.PingContext(ctx)
 }
 
 func (db *Repo) runMigrations() error {
@@ -217,6 +242,7 @@ type cursor struct {
 
 func encodeCursor(t time.Time, id string) string {
 	b, _ := json.Marshal(cursor{IngestedAt: t, EventID: id})
+
 	return base64.RawURLEncoding.EncodeToString(b)
 }
 
@@ -225,10 +251,12 @@ func decodeCursor(s string) (cursor, error) {
 	if err != nil {
 		return cursor{}, fmt.Errorf("invalid cursor: %w", err)
 	}
+
 	var c cursor
 	if err := json.Unmarshal(b, &c); err != nil {
 		return cursor{}, fmt.Errorf("invalid cursor: %w", err)
 	}
+
 	return c, nil
 }
 
@@ -236,11 +264,14 @@ func clamp(v, min, max, fallback int) int {
 	if v <= 0 {
 		return fallback
 	}
+
 	if v < min {
 		return min
 	}
+
 	if v > max {
 		return max
 	}
+
 	return v
 }
