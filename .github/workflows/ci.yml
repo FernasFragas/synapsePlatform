@@ -85,6 +85,11 @@ jobs:
       - name: Download dependencies
         run: go mod download
 
+      - name: Generate mocks
+        run: |
+          go install go.uber.org/mock/mockgen@latest
+          go generate ./internal/...
+
       - name: Run tests with coverage
         run: go test -v -race -coverprofile=coverage.out -covermode=atomic ./...
 
@@ -196,7 +201,7 @@ jobs:
           cache: true
           cache-dependency-path: go.sum
       - name: Build binary
-        run: go build -v -ldflags="-w -s" -o bin/synapsePlatform ./cmd/main.go
+        run: go build -v -ldflags="-w -s" -o bin/synapsePlatform ./cmd/
       - name: Upload binary artifact
         uses: actions/upload-artifact@v4
         with:

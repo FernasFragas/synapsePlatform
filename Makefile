@@ -5,7 +5,7 @@
 
 # Variables
 APP_NAME := synapsePlatform
-MAIN_PATH := cmd/main.go
+MAIN_PATH := ./cmd/
 DOCKER_COMPOSE := docker-compose
 
 ## help: Display this help message

@@ -15,7 +15,7 @@ COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build \
       -ldflags="-w -s" \
       -o bin/synapsePlatform \
-      ./cmd/main.go
+      ./cmd/
 
 # ── Runtime stage ─────────────────────────────────────────────────────────────
 # distroless/static has no shell, no package manager, minimal attack surface.
