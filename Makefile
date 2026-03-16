@@ -49,6 +49,9 @@ test-coverage:
 	go test -v -coverprofile=coverage.out ./...
 	go tool cover -html=coverage.out -o coverage.html
 
+test-int:
+	go test -v -tags integration ./internal/ingestor/...
+
 ## mod-tidy: Clean up go.mod and go.sum
 mod-tidy:
 	@echo "🧹 Tidying Go modules..."

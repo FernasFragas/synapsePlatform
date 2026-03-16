@@ -81,7 +81,7 @@ func (s *PipelineTestSuite) TestFullPipeline_MessageFlowsThroughToDatabase() {
 	s.Require().Len(result.Items, 1)
 
 	stored := result.Items[0]
-	s.Equal("energy", stored.Domain)
+	s.Equal("energy_meter", stored.Domain)
 	s.Equal("energy_meter", stored.EventType)
 	s.Equal("pipeline-device", stored.EntityID)
 	s.Equal("1.0.0", stored.SchemaVersion)

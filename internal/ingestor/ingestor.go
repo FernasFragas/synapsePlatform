@@ -63,6 +63,10 @@ func (i *Ingestor) Ingest(ctx context.Context) error {
 		default:
 			msg, err := i.processor.ProcessData(ctx)
 			if err != nil {
+				if ctx.Err() != nil {
+					return nil
+				}
+
 				err = i.failures.StoreFailure(ctx, FailedMessage{Stage: "process", Message: msg, Err: err})
 				if err != nil {
 					return err
@@ -77,6 +81,10 @@ func (i *Ingestor) Ingest(ctx context.Context) error {
 
 			transformedData, err := i.transformer.Transform(ctx, msg)
 			if err != nil {
+				if ctx.Err() != nil {
+					return nil
+				}
+
 				err = i.failures.StoreFailure(ctx, FailedMessage{Stage: "transform", Message: msg, Err: err})
 				if err != nil {
 					return err
@@ -87,6 +95,10 @@ func (i *Ingestor) Ingest(ctx context.Context) error {
 
 			err = i.storer.StoreData(ctx, transformedData)
 			if err != nil {
+				if ctx.Err() != nil {
+					return nil
+				}
+
 				err = i.failures.StoreFailure(ctx, FailedMessage{Stage: "store", Message: msg, Err: err})
 				if err != nil {
 					return err
