@@ -1,7 +1,6 @@
 //nolint:depguard
 package utilstest
 
-
 import (
 	"context"
 	"testing"
@@ -31,7 +30,7 @@ func NewTestRepo(t *testing.T) *TestRepo {
 
 	return &TestRepo{
 		repo: repo,
-		t: t,
+		t:    t,
 	}
 }
 

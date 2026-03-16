@@ -37,7 +37,7 @@ func (r *DataProcessor) WithCancel(cancel context.CancelFunc) *DataProcessor {
 			cancel()
 
 			return nil, errors.New("cancelled") //nolint:err113
-	})
+		})
 
 	return r
 }

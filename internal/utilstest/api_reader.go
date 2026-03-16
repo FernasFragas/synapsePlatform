@@ -22,21 +22,27 @@ func NewEventReader(t *testing.T) *EventReader {
 }
 
 func (er *EventReader) WithEvents(events []*ingestor.BaseEvent) *EventReader {
-	er.EXPECT().ListEvents(gomock.Any()).Return(events, nil)
+	er.EXPECT().ListEvents(gomock.Any(), gomock.Any()).Return(&ingestor.PageResponse[*ingestor.BaseEvent]{
+		Items: events,
+	}, nil)
+
 	return er
 }
 
 func (er *EventReader) WithEvent(event *ingestor.BaseEvent) *EventReader {
 	er.EXPECT().GetEvent(gomock.Any(), gomock.Any()).Return(event, nil)
+
 	return er
 }
 
 func (er *EventReader) WithListError(err error) *EventReader {
-	er.EXPECT().ListEvents(gomock.Any()).Return(nil, err)
+	er.EXPECT().ListEvents(gomock.Any(), gomock.Any()).Return(nil, err)
+
 	return er
 }
 
 func (er *EventReader) WithGetError(err error) *EventReader {
 	er.EXPECT().GetEvent(gomock.Any(), gomock.Any()).Return(nil, err)
+
 	return er
 }

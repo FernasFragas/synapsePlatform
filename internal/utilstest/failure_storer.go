@@ -1,4 +1,3 @@
-//go:generate mockgen -source=$GOFILE -destination=../utilstest/mocksgen/sqllite/mocked_$GOFILE
 package utilstest
 
 import (
@@ -27,6 +26,7 @@ func (f *FailureStorer) WithSuccess() *FailureStorer {
 		StoreFailure(gomock.Any(), gomock.Any()).
 		Return(nil).
 		AnyTimes()
+
 	return f
 }
 
@@ -34,15 +34,22 @@ func (f *FailureStorer) WithError(err error) *FailureStorer {
 	f.MockFailureStorer.EXPECT().
 		StoreFailure(gomock.Any(), gomock.Any()).
 		Return(err)
+
 	return f
 }
 
 func (f *FailureStorer) ExpectStage(stage string) *FailureStorer {
+	var s bool
+
 	f.MockFailureStorer.EXPECT().
 		StoreFailure(gomock.Any(), gomock.Cond(func(x any) bool {
 			fm, ok := x.(ingestor.FailedMessage)
-			return ok && fm.Stage == stage
+
+			s = ok && fm.Stage == stage
+
+			return s
 		})).
-		Return(nil)
+		Return(s)
+
 	return f
 }

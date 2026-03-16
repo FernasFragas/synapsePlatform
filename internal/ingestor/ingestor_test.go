@@ -5,7 +5,6 @@ import (
 	"errors"
 	"synapsePlatform/internal/ingestor"
 	"synapsePlatform/internal/utilstest"
-	"testing"
 	"time"
 
 	"github.com/google/uuid"
@@ -19,21 +18,19 @@ const (
 
 type IngestorTestSuite struct {
 	suite.Suite
-
 	processor   *utilstest.DataProcessor
 	transformer *utilstest.Transformer
 	storer      *utilstest.MessageStorer
-}
-
-func TestIngestorSuite(t *testing.T) {
-	suite.Run(t, new(IngestorTestSuite))
+	failures    *utilstest.FailureStorer
 }
 
 func (s *IngestorTestSuite) SetupTest() {
 	s.processor = utilstest.NewDataProcessor(s.T())
 	s.transformer = utilstest.NewTransformer(s.T())
 	s.storer = utilstest.NewMessageStorerMock(s.T())
+	s.failures = utilstest.NewFailureStorer(s.T())
 }
+
 
 func (s *IngestorTestSuite) TestIngest_ProcessorError_SkipsAndContinues() {
 	ctx, cancel := context.WithCancel(context.Background())
@@ -41,7 +38,7 @@ func (s *IngestorTestSuite) TestIngest_ProcessorError_SkipsAndContinues() {
 	s.processor.WithError(errors.New("poll failed"))
 	s.processor.WithCancel(cancel)
 
-	ing := ingestor.New(ingestor.Config{}, s.processor, s.storer, s.transformer)
+	ing := ingestor.New(ingestor.Config{}, s.processor, s.storer, s.transformer, s.failures)
 
 	err := ing.Ingest(ctx)
 
@@ -55,7 +52,7 @@ func (s *IngestorTestSuite) TestIngest_TransformerError_SkipsAndContinues() {
 	s.transformer.WithError(errors.New("transform failed"))
 	s.processor.WithCancel(cancel)
 
-	ing := ingestor.New(ingestor.Config{}, s.processor, s.storer, s.transformer)
+	ing := ingestor.New(ingestor.Config{}, s.processor, s.storer, s.transformer, s.failures)
 
 	s.NoError(ing.Ingest(ctx))
 }
@@ -69,7 +66,7 @@ func (s *IngestorTestSuite) TestIngest_HappyPath_EventPersistedInRealDB() {
 	s.processor.WithCancel(cancel)
 	s.storer.WithSuccess()
 
-	ing := ingestor.New(ingestor.Config{}, s.processor, s.storer, s.transformer)
+	ing := ingestor.New(ingestor.Config{}, s.processor, s.storer, s.transformer, s.failures)
 
 	s.NoError(ing.Ingest(ctx))
 }
