@@ -82,9 +82,6 @@ Use this template:
 ## Summary
 <!-- 1-3 bullet points: what changed and why -->
 
-## Test plan
-<!-- How did you verify this? Checklist of manual or automated steps -->
-
 ## Code Guidelines
 
 ### Architecture
