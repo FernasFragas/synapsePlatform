@@ -42,25 +42,3 @@ func (s *MessageStorer) StoreData(ctx context.Context, data *ingestor.BaseEvent)
 
 	return nil
 }
-
-func (s *MessageStorer) StoreFailure(ctx context.Context, failed ingestor.FailedMessage) error {
-	err := s.failureStorer.StoreFailure(ctx, failed)
-	if err != nil {
-		s.logger.Error("failed to store failure",
-			"stage", failed.Stage,
-			"message", failed.Message,
-			"cause", failed.Err,
-			"error", err,
-		)
-
-		return err
-	}
-
-	s.logger.Warn("failure stored",
-		"stage", failed.Stage,
-		"message", failed.Message,
-		"cause", failed.Err,
-	)
-
-	return nil
-}

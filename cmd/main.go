@@ -87,7 +87,7 @@ func main() {
 	kafkaFailures = kafka.NewKafkaDLQ(cfg.Kafka.Brokers, cfg.Kafka.DLQTopics)
 	kafkaFailures = synnapLog.NewFailurePublisher(logger.With("failures", "kafka"), kafkaFailures)
 
-	failures := ingestor.NewFallbackFailureStorer(storer, kafkaFailures)
+	failures := ingestor.NewFallbackFailureStorer(db, kafkaFailures)
 
 	authenticator, err := auth.NewJWTValidator(
 		[]byte(cfg.Auth.JWT.Secret),

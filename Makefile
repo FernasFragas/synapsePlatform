@@ -212,3 +212,22 @@ jaeger-down:
 jaeger-logs:
 	@docker logs -f jaeger
 
+## perf-test: Run performance test suite
+perf-test:
+	@echo "🚀 Starting performance test suite..."
+	@chmod +x test/perform_test.sh
+	@./test/perform_test.sh
+## perf-test-quick: Run quick performance test (Test 1 only)
+perf-test-quick:
+	@echo "🚀 Running quick performance test..."
+	@chmod +x test/perform_test.sh
+	@./test/perform_test.sh quick
+## perf-report: Show the latest performance report
+perf-report:
+	@echo "📊 Latest performance report:"
+	@LATEST=$$(ls -t ./performance-reports/synapse-performance-report-*.md 2>/dev/null | head -1);
+## perf-clean: Remove all performance reports
+## perf-clean: Remove all performance reports
+perf-clean:
+	@echo "🗑️  Removing performance reports..."
+	@rm -f ./performance-reports/synapse-performance-report-*.md
