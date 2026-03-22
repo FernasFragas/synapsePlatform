@@ -7,6 +7,7 @@ import (
 	"synapsePlatform/internal/kafka"
 	synnapLog "synapsePlatform/internal/log"
 	"synapsePlatform/internal/metrics"
+	"time"
 
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
@@ -21,28 +22,36 @@ func newIngestionPipeline(
 	transformer ingestor.Transformer,
 	failures ingestor.FailureStorer,
 	domains []ingestor.DataTypes,
+	batchSize int,
+	batchTimeout time.Duration,
+	workersNumb int,
 ) func(ctx context.Context) error {
 	topicLogger := logger.With("topic", consumer.Name())
 
-	// Poller: consumer → log → metrics
 	var poller ingestor.MessagePoller = synnapLog.NewMessagePoller(topicLogger, consumer)
 	metricsPoller, err := metrics.NewMessagePoller(meter, tracer, poller)
 	if err != nil {
 		logger.Error("failed to build metrics poller", "error", err)
+
 		return func(ctx context.Context) error { return err }
 	}
 
-	// Processor: poller → core → log → metrics
 	proc := ingestor.NewProcessor(metricsPoller)
 	var dataProc ingestor.DataProcessor = synnapLog.NewIngestorProcessor(topicLogger, proc)
 	metricsProc, err := metrics.NewIngestorProcessor(meter, tracer, dataProc)
 	if err != nil {
 		logger.Error("failed to build metrics processor", "error", err)
+
 		return func(ctx context.Context) error { return err }
 	}
 
 	ing := ingestor.New(
-		ingestor.Config{CompatibleDataTypes: domains},
+		ingestor.Config{
+			CompatibleDataTypes: domains,
+			BatchSize:           batchSize,
+			BatchTimeout:        batchTimeout,
+			NumWorkers: workersNumb,
+		},
 		metricsProc, storer, transformer, failures,
 	)
 

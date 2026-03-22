@@ -261,9 +261,31 @@ EOF
         peak=$(echo "$peak" | xargs)
         avg=$(echo "$avg" | xargs)
 
-        # Create bar chart (1 block = 5 msg/sec)
-        bars=$(awk "BEGIN {printf \"%.0f\", $throughput / 5}")
-        bar_str=$(printf '█%.0s' $(seq 1 $bars))
+        # Validate throughput is numeric
+        if [[ ! "$throughput" =~ ^[0-9]+\.?[0-9]*$ ]]; then
+            log_debug "Skipping invalid throughput value: $throughput"
+            continue
+        fi
+
+        # Create bar chart (1 block = 5 msg/sec) with validation
+        bars=$(awk "BEGIN {
+            if ($throughput > 0) {
+                printf \"%.0f\", $throughput / 5
+            } else {
+                print \"0\"
+            }
+        }")
+
+        # Ensure bars is a valid number
+        if [[ ! "$bars" =~ ^[0-9]+$ ]]; then
+            bars=0
+        fi
+
+        if [ "$bars" -gt 0 ]; then
+            bar_str=$(printf '█%.0s' $(seq 1 $bars))
+        else
+            bar_str=""
+        fi
 
         echo "| $date | $bar_str $throughput msg/sec |" >> "$CHART_FILE"
     done
@@ -286,13 +308,18 @@ EOF
         avg=$(echo "$avg" | xargs)
         latency=$(echo "$latency" | xargs)
 
+        # Validate throughput
+        if [[ ! "$throughput" =~ ^[0-9]+\.?[0-9]*$ ]]; then
+            continue
+        fi
+
         # Determine status emoji
         throughput_num=$(echo "$throughput" | sed 's/ msg\/sec//')
-        if (( $(echo "$throughput_num >= 100" | bc -l) )); then
+        if (( $(echo "$throughput_num >= 100" | bc -l 2>/dev/null || echo 0) )); then
             status="🟢 Excellent"
-        elif (( $(echo "$throughput_num >= 50" | bc -l) )); then
+        elif (( $(echo "$throughput_num >= 50" | bc -l 2>/dev/null || echo 0) )); then
             status="🟡 Good"
-        elif (( $(echo "$throughput_num >= 25" | bc -l) )); then
+        elif (( $(echo "$throughput_num >= 25" | bc -l 2>/dev/null || echo 0) )); then
             status="🟠 Moderate"
         else
             status="🔴 Poor"
@@ -805,21 +832,34 @@ check_regression() {
     local prev_throughput=$(tail -n +4 "$INDEX_FILE" 2>/dev/null | head -n 1 | \
         awk -F'|' '{print $3}' | sed 's/ msg\/sec//' | xargs)
 
-    if [ -z "$prev_throughput" ]; then
-        log_info "First run - no regression check"
+    # Validate inputs
+    if [ -z "$prev_throughput" ] || [ -z "$current_throughput" ]; then
+        log_info "First run or invalid data - no regression check"
         return
     fi
 
-    # Calculate percentage change
-    local change=$(awk "BEGIN {printf \"%.1f\", (($current_throughput - $prev_throughput) / $prev_throughput) * 100}")
+    # Check if values are numeric
+    if ! [[ "$prev_throughput" =~ ^[0-9]+\.?[0-9]*$ ]] || ! [[ "$current_throughput" =~ ^[0-9]+\.?[0-9]*$ ]]; then
+        log_warn "Non-numeric throughput values - skipping regression check"
+        return
+    fi
 
-    if (( $(echo "$change < -10" | bc -l) )); then
+    # Calculate percentage change (with validation)
+    local change=$(awk "BEGIN {
+        if ($prev_throughput == 0) {
+            print \"0\"
+        } else {
+            printf \"%.1f\", (($current_throughput - $prev_throughput) / $prev_throughput) * 100
+        }
+    }")
+
+    if (( $(echo "$change < -10" | bc -l 2>/dev/null || echo 0) )); then
         log_warn "⚠️  REGRESSION DETECTED: Throughput dropped by ${change}% (was: ${prev_throughput} msg/sec, now: ${current_throughput} msg/sec)"
         echo "## 🚨 Regression Alert" >> "$REPORT_FILE"
         echo "" >> "$REPORT_FILE"
         echo "Performance decreased by **${change}%** compared to previous run." >> "$REPORT_FILE"
         echo "" >> "$REPORT_FILE"
-    elif (( $(echo "$change > 10" | bc -l) )); then
+    elif (( $(echo "$change > 10" | bc -l 2>/dev/null || echo 0) )); then
         log_info "🎉 IMPROVEMENT: Throughput increased by ${change}% (was: ${prev_throughput} msg/sec, now: ${current_throughput} msg/sec)"
         echo "## 🎉 Performance Improvement" >> "$REPORT_FILE"
         echo "" >> "$REPORT_FILE"

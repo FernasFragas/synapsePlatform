@@ -3,6 +3,7 @@ package sqllite_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"synapsePlatform/internal/ingestor"
 	"synapsePlatform/internal/sqllite"
 	"testing"
@@ -192,6 +193,102 @@ func (s *StorerTestSuite) TestCheck_ClosedDB_ReturnsError() {
 	s.Error(s.repo.Check(s.ctx))
 }
 
+// --- StoreBatch ---
+
+func (s *StorerTestSuite) TestStoreBatch_EmptySlice_ReturnsNoError() {
+	err := s.repo.StoreBatch(s.ctx, []*ingestor.BaseEvent{})
+
+	s.NoError(err)
+}
+
+func (s *StorerTestSuite) TestStoreBatch_SingleEvent_Persists() {
+	event := s.energyEvent("device-1", time.Now().UTC())
+
+	err := s.repo.StoreBatch(s.ctx, []*ingestor.BaseEvent{event})
+	s.Require().NoError(err)
+
+	got, err := s.repo.GetEvent(s.ctx, event.EventID.String())
+	s.Require().NoError(err)
+	s.Equal(event.EventID, got.EventID)
+}
+
+func (s *StorerTestSuite) TestStoreBatch_MultipleEvents_AllPersist() {
+	now := time.Now().UTC()
+	events := []*ingestor.BaseEvent{
+		s.energyEvent("device-1", now),
+		s.energyEvent("device-2", now.Add(1*time.Second)),
+		s.energyEvent("device-3", now.Add(2*time.Second)),
+	}
+
+	err := s.repo.StoreBatch(s.ctx, events)
+	s.Require().NoError(err)
+
+	// Verify all events were stored
+	for _, event := range events {
+		got, err := s.repo.GetEvent(s.ctx, event.EventID.String())
+		s.Require().NoError(err)
+		s.Equal(event.EventID, got.EventID)
+		s.Equal(event.EntityID, got.EntityID)
+	}
+}
+
+func (s *StorerTestSuite) TestStoreBatch_LargeBatch_Persists() {
+	now := time.Now().UTC()
+	events := make([]*ingestor.BaseEvent, 100)
+	for i := 0; i < 100; i++ {
+		events[i] = s.energyEvent(fmt.Sprintf("device-%d", i), now.Add(time.Duration(i)*time.Millisecond))
+	}
+
+	err := s.repo.StoreBatch(s.ctx, events)
+	s.Require().NoError(err)
+
+	// Verify count
+	var count int
+	s.Require().NoError(
+		s.repo.Db.QueryRowContext(s.ctx, "SELECT COUNT(*) FROM events").Scan(&count),
+	)
+	s.Equal(100, count)
+}
+
+func (s *StorerTestSuite) TestStoreBatch_DuplicateEventID_RollsBackTransaction() {
+	event1 := s.energyEvent("device-1", time.Now().UTC())
+	event2 := s.energyEvent("device-2", time.Now().UTC())
+	event2.EventID = event1.EventID // Duplicate ID
+
+	// Store first event
+	s.Require().NoError(s.repo.StoreData(s.ctx, event1))
+
+	// Try to batch insert with duplicate
+	err := s.repo.StoreBatch(s.ctx, []*ingestor.BaseEvent{event2})
+	s.Error(err)
+
+	// Verify only one event exists
+	var count int
+	s.Require().NoError(
+		s.repo.Db.QueryRowContext(s.ctx, "SELECT COUNT(*) FROM events").Scan(&count),
+	)
+	s.Equal(1, count)
+}
+
+func (s *StorerTestSuite) TestStoreBatch_MixedEventTypes_AllPersist() {
+	now := time.Now().UTC()
+	events := []*ingestor.BaseEvent{
+		s.energyEvent("device-1", now),
+		s.financialEvent("account-1", now.Add(1*time.Second)),
+		s.environmentalEvent("sensor-1", now.Add(2*time.Second)),
+	}
+
+	err := s.repo.StoreBatch(s.ctx, events)
+	s.Require().NoError(err)
+
+	// Verify all events with different types were stored
+	for _, event := range events {
+		got, err := s.repo.GetEvent(s.ctx, event.EventID.String())
+		s.Require().NoError(err)
+		s.Equal(event.EventType, got.EventType)
+	}
+}
+
 // --- helpers ---
 
 func (s *StorerTestSuite) energyEvent(entityID string, ingestedAt time.Time) *ingestor.BaseEvent {
@@ -212,5 +309,44 @@ func (s *StorerTestSuite) energyEvent(entityID string, ingestedAt time.Time) *in
 func (s *StorerTestSuite) seedEvents(events ...*ingestor.BaseEvent) {
 	for _, e := range events {
 		s.Require().NoError(s.repo.StoreData(s.ctx, e))
+	}
+}
+
+func (s *StorerTestSuite) financialEvent(entityID string, ingestedAt time.Time) *ingestor.BaseEvent {
+	return &ingestor.BaseEvent{
+		EventID:       uuid.New(),
+		Domain:        "financial",
+		EventType:     "financial_stream",
+		EntityID:      entityID,
+		EntityType:    "device",
+		OccurredAt:    time.Now().UTC(),
+		IngestedAt:    ingestedAt,
+		Source:        "test",
+		SchemaVersion: "1.0.0",
+		Data: &ingestor.FinancialTransaction{
+			AmountMinor: 10050,
+			Currency:    "USD",
+			Merchant:    "Test Store",
+			Status:      "completed",
+		},
+	}
+}
+
+func (s *StorerTestSuite) environmentalEvent(entityID string, ingestedAt time.Time) *ingestor.BaseEvent {
+	return &ingestor.BaseEvent{
+		EventID:       uuid.New(),
+		Domain:        "environmental",
+		EventType:     "environmental_sensor",
+		EntityID:      entityID,
+		EntityType:    "sensor",
+		OccurredAt:    time.Now().UTC(),
+		IngestedAt:    ingestedAt,
+		Source:        "test",
+		SchemaVersion: "1.0.0",
+		Data: &ingestor.EnvironmentalSensor{
+			TemperatureC:    22.5,
+			HumidityPercent: 65.0,
+			AirQualityIndex: 45.0,
+		},
 	}
 }

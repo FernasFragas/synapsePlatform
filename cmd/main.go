@@ -133,7 +133,23 @@ func main() {
 		consumerProbe = synnapLog.NewHealthProbe(healthLogger, consumerProbe)
 		kafkaProbes = append(kafkaProbes, consumerProbe)
 
-		run := newIngestionPipeline(logger, meter, tracer, consumer, metricsStore, metricsTransformer, failures, domains)
+		batchSize := 2000                // or cfg.Ingestor.BatchSize
+		batchTimeout := 10 * time.Second // or cfg.Ingestor.BatchTimeout
+		workersNumber := 3
+
+		run := newIngestionPipeline(
+			logger,
+			meter,
+			tracer,
+			consumer,
+			metricsStore,
+			metricsTransformer,
+			failures,
+			domains,
+			batchSize,
+			batchTimeout,
+			workersNumber,
+		)
 
 		g.Go(func() error { return run(ctx) })
 	}

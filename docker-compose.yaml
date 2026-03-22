@@ -32,7 +32,7 @@ services:
       sleep 20 &&
       
       # Create topics
-      kafka-topics --create --topic ingestion.raw --partitions 1 --replication-factor 1 --if-not-exists --bootstrap-server kafka:9092 &&  
+      kafka-topics --create --topic ingestion.raw --partitions 10 --replication-factor 1 --if-not-exists --bootstrap-server kafka:9092 &&  
       
       echo 'Kafka topics created successfully'
       "

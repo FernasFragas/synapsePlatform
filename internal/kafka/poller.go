@@ -39,6 +39,8 @@ func NewConsumer(config StreamingConfigs, topic string, maxStale time.Duration) 
 		MinBytes:       config.MinBytes,
 		MaxBytes:       config.MaxBytes,
 		CommitInterval: time.Second,
+		MaxWait:        500 * time.Millisecond,  // Don't wait too long
+		ReadBatchTimeout: 100 * time.Millisecond,
 	})
 
 	return &KafkaConsumer{
@@ -54,8 +56,12 @@ func (c *KafkaConsumer) PollMessage(ctx context.Context) (*ingestor.DeviceMessag
 	case <-ctx.Done():
 		return nil, nil
 	default:
-		kafkaMsg, err := c.reader.ReadMessage(ctx)
+		kafkaMsg, err := c.reader.FetchMessage(ctx)
 		if err != nil {
+			return nil, err
+		}
+
+		if err := c.reader.CommitMessages(ctx, kafkaMsg); err != nil {
 			return nil, err
 		}
 

@@ -2,6 +2,18 @@
 
 | Date | Report | Throughput (Test 2) | Success Rate | Peak LAG | Avg LAG | Query Latency |
 |------|--------|---------------------|--------------|----------|---------|---------------|
+| 20260322-232108 | [Report](./synapse-performance-report-20260322-232108.md) | 22.6 msg/sec | 100.00% | 31 | 16 | 16ms |
+| 20260322-212219 | [Report](./synapse-performance-report-20260322-212219.md) | 22.3 msg/sec | 100.00% | 56 | 29 | 24ms |
+| 20260322-204900 | [Report](./synapse-performance-report-20260322-204900.md) | 22.4 msg/sec | 100.00% | 54 | 27 | 15ms |
+| 20260322-200130 | [Report](./synapse-performance-report-20260322-200130.md) | 23.2 msg/sec | 99.60% | 52 | 27 | 19ms |
+| 20260322-194535 | [Report](./synapse-performance-report-20260322-194535.md) | N/A | N/A | N/A | N/A | N/A |
+| 20260322-185921 | [Report](./synapse-performance-report-20260322-185921.md) | 22.5 msg/sec | 100.00% | 59 | 31 | 10ms |
+| 20260322-183729 | [Report](./synapse-performance-report-20260322-183729.md) | N/A | N/A | N/A | N/A | N/A |
+| 20260322-180931 | [Report](./synapse-performance-report-20260322-180931.md) | 23.5 msg/sec | 100.00% | 57 | 30 | 16ms |
+| 20260322-172913 | [Report](./synapse-performance-report-20260322-172913.md) | 23.3 msg/sec | 100.00% | 56 | 28 | 19ms |
+| 20260322-171602 | [Report](./synapse-performance-report-20260322-171602.md) | N/A | N/A | N/A | N/A | N/A |
+| 20260322-162053 | [Report](./synapse-performance-report-20260322-162053.md) | 23.0 msg/sec | 100.00% | 55 | 29 | 18ms |
+| 20260322-154523 | [Report](./synapse-performance-report-20260322-154523.md) | 22.4 msg/sec | 100.00% | 56 | 29 | 14ms |
 | 20260322-133632 | [Report](./synapse-performance-report-20260322-133632.md) | 22.0 msg/sec | 100.00% | 56 | 27 | 17ms |
 | 20260322-130117 | [Report](./synapse-performance-report-20260322-130117.md) | 21.9 msg/sec | 100.00% | 56 | 28 | 19ms |
 | 20260322-113350 | [Report](./synapse-performance-report-20260322-113350.md) | 23.5 msg/sec | 100.00% | 56 | 29 | 25ms |
