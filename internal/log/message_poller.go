@@ -21,7 +21,7 @@ func NewMessagePoller(log *slog.Logger, poller ingestor.MessagePoller) *MessageP
 // PollMessage logs the consuming messages, calling handler for each.
 func (mp *MessagePoller) PollMessage(ctx context.Context) (*ingestor.DeviceMessage, error) {
 	msg, err := mp.poller.PollMessage(ctx)
-	if err != nil {
+	if err != nil || msg == nil {
 		attrs := []any{"error", err}
 		if msg != nil {
 			attrs = append(attrs,

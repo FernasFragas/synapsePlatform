@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"log/slog"
 	"os"
@@ -60,12 +59,6 @@ func main() {
 		os.Exit(1)
 	}
 
-	defer func(Db *sql.DB) {
-		if err := Db.Close(); err != nil {
-			logger.Error("Failed to close DB", "error", err)
-		}
-	}(db.Db)
-
 	storer := synnapLog.NewMessageStorer(logger, db)
 	metricsStore, err := metrics.NewMessageStorer(meter, tracer, storer)
 	if err != nil {
@@ -83,6 +76,7 @@ func main() {
 		os.Exit(1)
 	}
 
+	var consumers []*kafka.KafkaConsumer
 	var kafkaFailures ingestor.FailureStorer
 	kafkaFailures = kafka.NewKafkaDLQ(cfg.Kafka.Brokers, cfg.Kafka.DLQTopics)
 	kafkaFailures = synnapLog.NewFailurePublisher(logger.With("failures", "kafka"), kafkaFailures)
@@ -133,8 +127,9 @@ func main() {
 
 	for _, topic := range cfg.Kafka.Topics {
 		consumer := kafka.NewConsumer(kafkaConfig, topic, 2*time.Minute)
-		var consumerProbe health.Probe = consumer
+		consumers = append(consumers, consumer)
 
+		var consumerProbe health.Probe = consumer
 		consumerProbe = synnapLog.NewHealthProbe(healthLogger, consumerProbe)
 		kafkaProbes = append(kafkaProbes, consumerProbe)
 
@@ -168,15 +163,55 @@ func main() {
 
 	g.Go(func() error {
 		<-ctx.Done()
+		logger.Info("shutdown initiated")
 
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), cfg.Server.Shutdown.Timeout)
 
 		defer cancel()
 
-		return apiServer.Shutdown(shutdownCtx)
+		logger.Info("shutting down HTTP server")
+		if err := apiServer.Shutdown(shutdownCtx); err != nil {
+			logger.Error("HTTP server shutdown failed", "error", err)
+		} else {
+			logger.Info("HTTP server stopped")
+		}
+
+		logger.Info("closing Kafka consumers", "count", len(consumers))
+		for i, consumer := range consumers {
+			if err := consumer.Close(shutdownCtx); err != nil {
+				logger.Error("failed to close consumer",
+					"index", i,
+					"name", consumer.Name(),
+					"error", err,
+				)
+			} else {
+				logger.Info("consumer closed", "index", i, "name", consumer.Name())
+			}
+		}
+		// Step 4: Close DLQ writer (flush any pending messages)
+		logger.Info("closing DLQ writer")
+		if dlq, ok := kafkaFailures.(interface{ Close() error }); ok {
+			if err := dlq.Close(); err != nil {
+				logger.Error("failed to close DLQ", "error", err)
+			} else {
+				logger.Info("DLQ writer closed")
+			}
+		}
+		// Step 5: Database will be closed by defer in main()
+		logger.Info("shutdown sequence complete")
+		return nil
 	})
 
 	waitErr := g.Wait()
+
+	logger.Info("all goroutines stopped, performing final cleanup")
+
+	if err := db.Db.Close(); err != nil {
+		logger.Error("failed to close database", "error", err)
+	} else {
+		logger.Info("database closed")
+	}
+
 	if waitErr != nil {
 		logger.Error("shutdown", "reason", waitErr)
 	} else {

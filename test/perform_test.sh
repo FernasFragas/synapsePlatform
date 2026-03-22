@@ -7,9 +7,10 @@ set -e  # Exit on error
 
 # Configuration
 REPORT_DIR="./performance-reports"
-REPORT_FILE="${REPORT_DIR}/synapse-performance-report-$(date +%Y%m%d-%H%M%S).md"
-DEBUG_LOG="${REPORT_DIR}/debug-$(date +%Y%m%d-%H%M%S).log"
-LAG_LOG="/tmp/kafka-lag-monitor.log"
+TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+REPORT_FILE="${REPORT_DIR}/synapse-performance-report-${TIMESTAMP}.md"
+DEBUG_LOG="${REPORT_DIR}/debug-${TIMESTAMP}.log"
+LAG_LOG="${REPORT_DIR}/kafka-lag-${TIMESTAMP}.log"
 APP_PORT=8080
 KAFKA_BROKER="localhost:9092"
 KAFKA_TOPIC="ingestion.raw"
@@ -114,7 +115,7 @@ stop_lag_monitoring() {
 # Monitor process stats in background
 monitor_process_stats() {
     local test_name=$1
-    local stats_log="/tmp/process-stats-$test_name.log"
+    local stats_log="${REPORT_DIR}/process-stats-${test_name}-${TIMESTAMP}.log"
     > "$stats_log"
 
     while true; do
@@ -173,6 +174,137 @@ check_indexes() {
     fi
 
     echo "$HAS_PAGINATION_INDEX"
+}
+
+# Update INDEX.md with test results
+update_index() {
+    local timestamp=$1
+    local test2_throughput=$2
+    local test2_success=$3
+    local peak_lag=$4
+    local avg_lag=$5
+
+    local INDEX_FILE="${REPORT_DIR}/INDEX.md"
+    local TEMP_FILE="${REPORT_DIR}/.index.tmp"
+
+    log_info "Updating INDEX.md..."
+
+    # Create INDEX.md if it doesn't exist
+    if [ ! -f "$INDEX_FILE" ]; then
+        cat > "$INDEX_FILE" << 'EOF'
+# Performance Test History
+
+| Date | Report | Test 2 Throughput | Success Rate | Peak LAG | Avg LAG | Query Latency |
+|------|--------|-------------------|--------------|----------|---------|---------------|
+EOF
+    fi
+
+    # Extract the header
+    head -n 3 "$INDEX_FILE" > "$TEMP_FILE"
+
+    # Add new entry at the top (most recent first)
+    echo "| $timestamp | [Report](./synapse-performance-report-${timestamp}.md) | ${test2_throughput} msg/sec | ${test2_success}% | $peak_lag | $avg_lag | ${QUERY_LATENCY}ms |" >> "$TEMP_FILE"
+
+    # Append existing entries (skip header)
+    if [ $(wc -l < "$INDEX_FILE") -gt 3 ]; then
+        tail -n +4 "$INDEX_FILE" >> "$TEMP_FILE"
+    fi
+
+    # Replace old INDEX with new one
+    mv "$TEMP_FILE" "$INDEX_FILE"
+
+    log_info "✅ INDEX.md updated"
+}
+
+# Generate comparison chart for last N runs
+generate_comparison_chart() {
+    local INDEX_FILE="${REPORT_DIR}/INDEX.md"
+    local CHART_FILE="${REPORT_DIR}/COMPARISON.md"
+
+    log_info "Generating comparison chart..."
+
+    # Check if we have enough data
+    local entry_count=$(tail -n +4 "$INDEX_FILE" 2>/dev/null | wc -l)
+    if [ "$entry_count" -lt 2 ]; then
+        log_debug "Not enough data for comparison (need at least 2 runs)"
+        return
+    fi
+
+    # Extract last 10 runs for comparison
+    cat > "$CHART_FILE" << 'EOF'
+# Performance Comparison Chart
+
+## Throughput Trend (Test 2: 100 msg/sec target)
+
+EOF
+
+    # Parse INDEX.md and create ASCII chart
+    tail -n +4 "$INDEX_FILE" | head -n 10 | while IFS='|' read -r _ date _ throughput _ success _ peak _ avg _ latency _; do
+        # Clean up whitespace
+        date=$(echo "$date" | xargs)
+        throughput=$(echo "$throughput" | sed 's/ msg\/sec//' | xargs)
+        success=$(echo "$success" | sed 's/%//' | xargs)
+        peak=$(echo "$peak" | xargs)
+        avg=$(echo "$avg" | xargs)
+
+        # Create bar chart (1 block = 5 msg/sec)
+        bars=$(awk "BEGIN {printf \"%.0f\", $throughput / 5}")
+        bar_str=$(printf '█%.0s' $(seq 1 $bars))
+
+        echo "| $date | $bar_str $throughput msg/sec |" >> "$CHART_FILE"
+    done
+
+    cat >> "$CHART_FILE" << 'EOF'
+
+## Recent Performance Metrics
+
+EOF
+
+    # Add detailed comparison table
+    echo '| Date | Test 2 Throughput | Success | Peak LAG | Avg LAG | Query Time | Status |' >> "$CHART_FILE"
+    echo '|------|-------------------|---------|----------|---------|------------|--------|' >> "$CHART_FILE"
+
+    tail -n +4 "$INDEX_FILE" | head -n 10 | while IFS='|' read -r _ date _ throughput _ success _ peak _ avg _ latency _; do
+        date=$(echo "$date" | xargs)
+        throughput=$(echo "$throughput" | xargs)
+        success=$(echo "$success" | xargs)
+        peak=$(echo "$peak" | xargs)
+        avg=$(echo "$avg" | xargs)
+        latency=$(echo "$latency" | xargs)
+
+        # Determine status emoji
+        throughput_num=$(echo "$throughput" | sed 's/ msg\/sec//')
+        if (( $(echo "$throughput_num >= 100" | bc -l) )); then
+            status="🟢 Excellent"
+        elif (( $(echo "$throughput_num >= 50" | bc -l) )); then
+            status="🟡 Good"
+        elif (( $(echo "$throughput_num >= 25" | bc -l) )); then
+            status="🟠 Moderate"
+        else
+            status="🔴 Poor"
+        fi
+
+        echo "| $date | $throughput | $success | $peak | $avg | $latency | $status |" >> "$CHART_FILE"
+    done
+
+    cat >> "$CHART_FILE" << 'EOF'
+
+## Performance Insights
+
+### Throughput Analysis
+- **Target:** 100 msg/sec (Test 2)
+- **Best Run:** See table above
+- **Trend:** Check if throughput is improving over time
+
+### Recommendations
+- 🔴 **< 25 msg/sec:** Critical bottleneck - implement batching + worker pools
+- 🟠 **25-50 msg/sec:** Moderate - add batching or increase workers
+- 🟡 **50-100 msg/sec:** Good - fine-tune configuration
+- 🟢 **> 100 msg/sec:** Excellent - meeting target!
+
+EOF
+
+    log_info "✅ Comparison chart generated: $CHART_FILE"
 }
 
 # Sample application logs
@@ -650,7 +782,60 @@ cat >> $REPORT_FILE << EOF
 **Test completed at:** $(date)
 EOF
 
+# Detect performance regression
+check_regression() {
+    local current_throughput=$1
+    local INDEX_FILE="${REPORT_DIR}/INDEX.md"
+
+    # Get previous run's throughput
+    local prev_throughput=$(tail -n +4 "$INDEX_FILE" 2>/dev/null | head -n 1 | \
+        awk -F'|' '{print $3}' | sed 's/ msg\/sec//' | xargs)
+
+    if [ -z "$prev_throughput" ]; then
+        log_info "First run - no regression check"
+        return
+    fi
+
+    # Calculate percentage change
+    local change=$(awk "BEGIN {printf \"%.1f\", (($current_throughput - $prev_throughput) / $prev_throughput) * 100}")
+
+    if (( $(echo "$change < -10" | bc -l) )); then
+        log_warn "⚠️  REGRESSION DETECTED: Throughput dropped by ${change}% (was: ${prev_throughput} msg/sec, now: ${current_throughput} msg/sec)"
+        echo "## 🚨 Regression Alert" >> "$REPORT_FILE"
+        echo "" >> "$REPORT_FILE"
+        echo "Performance decreased by **${change}%** compared to previous run." >> "$REPORT_FILE"
+        echo "" >> "$REPORT_FILE"
+    elif (( $(echo "$change > 10" | bc -l) )); then
+        log_info "🎉 IMPROVEMENT: Throughput increased by ${change}% (was: ${prev_throughput} msg/sec, now: ${current_throughput} msg/sec)"
+        echo "## 🎉 Performance Improvement" >> "$REPORT_FILE"
+        echo "" >> "$REPORT_FILE"
+        echo "Performance increased by **${change}%** compared to previous run!" >> "$REPORT_FILE"
+        echo "" >> "$REPORT_FILE"
+    else
+        log_info "Performance stable (${change}% change)"
+    fi
+}
+
 # Create symlink to latest
+ln -sf "$(basename $REPORT_FILE)" "$REPORT_DIR/latest.md"
+
+# ============================================================================
+# Update Index and Generate Comparison
+# ============================================================================
+
+# Calculate Test 2 metrics for index
+TEST2_THROUGHPUT=$(awk "BEGIN {printf \"%.1f\", $TEST2_PROCESSED / $TEST2_DURATION}")
+
+# Check for regression
+check_regression "$TEST2_THROUGHPUT"
+
+# Update INDEX.md with this run's results
+update_index "$TIMESTAMP" "$TEST2_THROUGHPUT" "$TEST2_SUCCESS_RATE" "$TEST2_PEAK_LAG" "$TEST2_AVG_LAG"
+
+# Generate comparison chart
+generate_comparison_chart
+
+# Create symlink to latest report
 ln -sf "$(basename $REPORT_FILE)" "$REPORT_DIR/latest.md"
 
 # ============================================================================
@@ -659,10 +844,45 @@ ln -sf "$(basename $REPORT_FILE)" "$REPORT_DIR/latest.md"
 
 log_info "Performance test complete!"
 log_info "Report saved to: $REPORT_FILE"
+log_info "Index updated: $REPORT_DIR/INDEX.md"
+log_info "Comparison chart: $REPORT_DIR/COMPARISON.md"
 log_info "Debug log saved to: $DEBUG_LOG"
 echo ""
-cat $REPORT_FILE
+echo "📊 Latest Results:"
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+tail -n 1 "$REPORT_DIR/INDEX.md"
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
-log_info "View report: cat $REPORT_FILE"
+log_info "View full report: cat $REPORT_FILE"
+log_info "View index: cat $REPORT_DIR/INDEX.md"
+log_info "View comparison: cat $REPORT_DIR/COMPARISON.md"
 log_info "View debug log: cat $DEBUG_LOG"
-log_info "View latest: cat $REPORT_DIR/latest.md"
+
+# Create an index of all test runs
+create_index() {
+    local index_file="${REPORT_DIR}/INDEX.md"
+
+    cat > "$index_file" << 'EOF'
+# Performance Test History
+
+| Date | Report | Peak LAG | Throughput (Test 2) | Success Rate |
+|------|--------|----------|---------------------|--------------|
+EOF
+
+    for report in $(ls -t ${REPORT_DIR}/synapse-performance-report-*.md); do
+        TIMESTAMP=$(basename "$report" | sed 's/synapse-performance-report-\(.*\)\.md/\1/')
+        DATE=$(echo "$TIMESTAMP" | sed 's/\([0-9]\{8\}\)-\([0-9]\{6\}\)/\1 \2/')
+
+        # Extract metrics from report
+        PEAK_LAG=$(grep "Peak Kafka LAG" "$report" | head -1 | awk '{print $5}')
+        THROUGHPUT=$(grep "Test 2.*Actual Throughput" "$report" | awk '{print $5}')
+        SUCCESS=$(grep "Test 2.*Success Rate" "$report" | awk '{print $5}')
+
+        echo "| $DATE | [Report](./${report##*/}) | $PEAK_LAG | $THROUGHPUT | $SUCCESS |" >> "$index_file"
+    done
+
+    log_info "Index created: $index_file"
+}
+
+# Call at the end of the script
+create_index

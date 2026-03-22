@@ -231,3 +231,22 @@ perf-report:
 perf-clean:
 	@echo "🗑️  Removing performance reports..."
 	@rm -f ./performance-reports/synapse-performance-report-*.md
+
+## perf-history: Show performance test history
+perf-history:
+	@echo "📊 Performance Test History"
+	@echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+	@cat performance-reports/INDEX.md 2>/dev/null || echo "No performance tests run yet. Run 'make perf-test' first."
+
+## perf-compare: Show performance comparison chart
+perf-compare:
+	@cat performance-reports/COMPARISON.md 2>/dev/null || echo "No comparison data yet. Run at least 2 performance tests."
+
+## perf-trend: Show throughput trend (last 10 runs)
+perf-trend:
+	@echo "📈 Throughput Trend (Test 2: 100 msg/sec target)"
+	@echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+	@tail -n +4 performance-reports/INDEX.md 2>/dev/null | head -n 10 | \
+		awk -F'|' '{gsub(/^[ \t]+|[ \t]+$$/, "", $$3); gsub(/^[ \t]+|[ \t]+$$/, "", $$4); \
+		printf "%-20s %s (Success: %s)\n", $$2, $$3, $$4}' || \
+		echo "No performance data available yet."

@@ -32,6 +32,27 @@ func NewRepo(dbPath string) (*Repo, error) {
 		return nil, err
 	}
 
+	// Configure SQLite for optimal performance
+	pragmas := []string{
+		"PRAGMA journal_mode=WAL",           // Enable Write-Ahead Logging
+		"PRAGMA busy_timeout=5000",          // Wait 5s on lock contention
+		"PRAGMA synchronous=NORMAL",         // Balance durability vs speed
+		"PRAGMA cache_size=-64000",          // 64MB cache (negative = KB)
+		"PRAGMA foreign_keys=ON",            // Enable foreign key constraints
+		"PRAGMA temp_store=MEMORY",          // Store temp tables in memory
+	}
+
+	for _, pragma := range pragmas {
+		if _, err := db.Exec(pragma); err != nil {
+			return nil, fmt.Errorf("failed to set pragma: %w", err)
+		}
+	}
+
+	// Set connection pool limits (SQLite works best with limited concurrency)
+	db.SetMaxOpenConns(5)
+	db.SetMaxIdleConns(2)
+	db.SetConnMaxLifetime(0) // Connections never expire
+
 	var database = Repo{
 		Db: db,
 	}
