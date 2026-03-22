@@ -76,16 +76,14 @@ func (c *KafkaConsumer) PollMessage(ctx context.Context) (*ingestor.DeviceMessag
 
 func (c *KafkaConsumer) Name() string { return "kafka" }
 
-func (c *KafkaConsumer) Check(_ context.Context) error {
-	c.mu.Lock()
-	last := c.lastPoll
-	c.mu.Unlock()
-
-	stale := time.Since(last)
-	if stale > c.maxStale {
-		return fmt.Errorf("last successful poll %s ago (threshold %s)",
-			stale.Round(time.Second), c.maxStale)
+func (c *KafkaConsumer) Check(ctx context.Context) error {
+	// Try to fetch metadata to verify connectivity
+	conn, err := kafka.DialContext(ctx, "tcp", c.config.Brokers[0])
+	if err != nil {
+		return fmt.Errorf("kafka unreachable: %w", err)
 	}
+
+	defer conn.Close()
 
 	return nil
 }

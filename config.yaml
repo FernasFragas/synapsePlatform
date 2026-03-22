@@ -45,11 +45,11 @@ log:
   max_value_bytes: 512
 
 # Print spans to stdout (for local debugging)
-tracing:
-  endpoint: "stdout"
-# Send to Jaeger/Tempo/Collector via OTLP
 #tracing:
-#  endpoint: "http://localhost:4318/v1/traces"
+#  endpoint: "stdout"
+# Send to Jaeger/Tempo/Collector via OTLP
+tracing:
+  endpoint: "http://localhost:4318/v1/traces"
 # Disable tracing entirely (no-op, zero overhead)
 #tracing:
 #  endpoint: ""
