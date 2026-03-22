@@ -16,6 +16,20 @@ KAFKA_BROKER="localhost:9092"
 KAFKA_TOPIC="ingestion.raw"
 DB_PATH="data.db"
 
+cleanup() {
+    log_info "Cleaning up background processes..."
+    if [ ! -z "$LAG_MONITOR_PID" ]; then
+        kill $LAG_MONITOR_PID 2>/dev/null || true
+    fi
+    if [ ! -z "$PROCESS_MONITOR_PID" ]; then
+        kill $PROCESS_MONITOR_PID 2>/dev/null || true
+    fi
+    # Kill any remaining monitor processes
+    pkill -P $$ 2>/dev/null || true
+}
+trap cleanup EXIT INT TERM
+
+
 # Create reports directory if it doesn't exist
 mkdir -p "$REPORT_DIR"
 
