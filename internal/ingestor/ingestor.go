@@ -4,6 +4,7 @@ package ingestor
 import (
 	"context"
 	"fmt"
+	"sync"
 	"time"
 
 	"golang.org/x/sync/errgroup"
@@ -81,6 +82,7 @@ func (i *Ingestor) Ingest(ctx context.Context) error {
 		if i.cfg.BatchSize == 1 {
 			return i.ingestSingle(ctx)
 		}
+
 		return i.ingestBatch(ctx)
 	}
 
@@ -88,163 +90,9 @@ func (i *Ingestor) Ingest(ctx context.Context) error {
 	return i.ingestWithWorkerPool(ctx)
 }
 
-// Worker pool implementation
-func (i *Ingestor) ingestWithWorkerPool(ctx context.Context) error {
-	msgCh := make(chan *DeviceMessage, i.cfg.NumWorkers*10)
-
-	eventCh := make(chan *BaseEvent, i.cfg.NumWorkers*i.cfg.BatchSize)
-
-	g, ctx := errgroup.WithContext(ctx)
-
-	g.Go(func() error {
-		defer close(msgCh)
-
-		for {
-			if ctx.Err() != nil {
-				return nil
-			}
-
-			msg, err := i.processor.ProcessData(ctx)
-			if err != nil {
-				if ctx.Err() != nil {
-					return nil
-				}
-				_ = i.failures.StoreFailure(ctx, FailedMessage{
-					Stage: "process", Message: msg, Err: err,
-				})
-				continue
-			}
-
-			if msg == nil {
-				continue
-			}
-
-			select {
-			case msgCh <- msg:
-			case <-ctx.Done():
-				return nil
-			}
-		}
-	})
-
-	for w := 0; w < i.cfg.NumWorkers; w++ {
-		workerID := w
-		g.Go(func() error {
-			for {
-				select {
-				case <-ctx.Done():
-					return nil
-
-				case msg, ok := <-msgCh:
-					if !ok {
-						return nil
-					}
-
-					transformedData, err := i.transformer.Transform(ctx, msg)
-					if err != nil {
-						if ctx.Err() != nil {
-							return nil
-						}
-						_ = i.failures.StoreFailure(ctx, FailedMessage{
-							Stage:   "transform",
-							Message: msg,
-							Err:     fmt.Errorf("worker %d: %w", workerID, err),
-						})
-						continue
-					}
-
-					select {
-					case eventCh <- transformedData:
-					case <-ctx.Done():
-						return nil
-					}
-				}
-			}
-		})
-	}
-
-	go func() {
-		g.Wait()
-		close(eventCh)
-	}()
-
-	return i.runBatcher(ctx, eventCh)
-}
-
-// Batcher collects events and flushes in batches
-func (i *Ingestor) runBatcher(ctx context.Context, eventCh <-chan *BaseEvent) error {
-	batch := make([]*BaseEvent, 0, i.cfg.BatchSize)
-	ticker := time.NewTicker(i.cfg.BatchTimeout)
-	defer ticker.Stop()
-
-	flush := func() error {
-		if len(batch) == 0 {
-			return nil
-		}
-
-		var err error
-		if len(batch) == 1 {
-			err = i.storer.StoreData(ctx, batch[0])
-		} else {
-			err = i.storer.StoreBatch(ctx, batch)
-		}
-
-		if err != nil {
-			for _, event := range batch {
-				failedMsg := &DeviceMessage{
-					DeviceID:  event.EntityID,
-					Type:      event.EventType,
-					Timestamp: event.OccurredAt,
-				}
-
-				_ = i.failures.StoreFailure(ctx, FailedMessage{
-					Stage:   "store_batch",
-					Message: failedMsg,
-					Err:     fmt.Errorf("batch store failed: %w", err),
-				})
-			}
-		}
-
-		batch = batch[:0]
-		ticker.Reset(i.cfg.BatchTimeout)
-
-		return err
-	}
-
-	for {
-		select {
-		case <-ctx.Done():
-			_ = flush()
-			return nil
-
-		case <-ticker.C:
-			if err := flush(); err != nil {
-				continue
-			}
-
-		case event, ok := <-eventCh:
-			if !ok {
-				_ = flush()
-				return nil
-			}
-
-			batch = append(batch, event)
-
-			if len(batch) >= i.cfg.BatchSize {
-				if err := flush(); err != nil {
-					continue
-				}
-			}
-		}
-	}
-}
-
 // Simple single-message processing (no batching overhead)
 func (i *Ingestor) ingestSingle(ctx context.Context) error {
 	for {
-		if ctx.Err() != nil {
-			return nil
-		}
 		msg, err := i.processor.ProcessData(ctx)
 		if err != nil {
 			if ctx.Err() != nil {
@@ -253,11 +101,14 @@ func (i *Ingestor) ingestSingle(ctx context.Context) error {
 			_ = i.failures.StoreFailure(ctx, FailedMessage{
 				Stage: "process", Message: msg, Err: err,
 			})
+
 			continue
 		}
+
 		if msg == nil {
 			continue
 		}
+
 		transformedData, err := i.transformer.Transform(ctx, msg)
 		if err != nil {
 			if ctx.Err() != nil {
@@ -266,8 +117,10 @@ func (i *Ingestor) ingestSingle(ctx context.Context) error {
 			_ = i.failures.StoreFailure(ctx, FailedMessage{
 				Stage: "transform", Message: msg, Err: err,
 			})
+
 			continue
 		}
+
 		err = i.storer.StoreData(ctx, transformedData)
 		if err != nil {
 			if ctx.Err() != nil {
@@ -276,6 +129,7 @@ func (i *Ingestor) ingestSingle(ctx context.Context) error {
 			_ = i.failures.StoreFailure(ctx, FailedMessage{
 				Stage: "store", Message: msg, Err: err,
 			})
+
 			continue
 		}
 	}
@@ -289,102 +143,230 @@ func (i *Ingestor) ingestBatch(ctx context.Context) error {
 
 	eventCh := make(chan *BaseEvent, i.cfg.BatchSize*2)
 
-	go func() {
-		for {
-			if ctx.Err() != nil {
-				close(eventCh)
-				return
-			}
-			msg, err := i.processor.ProcessData(ctx)
-			if err != nil {
-				if ctx.Err() != nil {
-					close(eventCh)
-					return
-				}
-				_ = i.failures.StoreFailure(ctx, FailedMessage{
-					Stage: "process", Message: msg, Err: err,
-				})
-				continue
-			}
-			if msg == nil {
-				continue
-			}
-			transformedData, err := i.transformer.Transform(ctx, msg)
-			if err != nil {
-				if ctx.Err() != nil {
-					close(eventCh)
-					return
-				}
-				_ = i.failures.StoreFailure(ctx, FailedMessage{
-					Stage: "transform", Message: msg, Err: err,
-				})
-				continue
-			}
-			select {
-			case eventCh <- transformedData:
-			case <-ctx.Done():
-				close(eventCh)
-				return
-			}
-		}
-	}()
+	g, ctx := errgroup.WithContext(ctx)
 
-	flush := func() error {
-		if len(batch) == 0 {
+	g.Go(func() error { return i.handleBatch(ctx, eventCh) })
+
+	return i.saveBatch(ctx, ticker, eventCh, batch)
+}
+
+// Worker pool implementation
+func (i *Ingestor) ingestWithWorkerPool(ctx context.Context) error {
+	msgCh := make(chan *DeviceMessage, i.cfg.NumWorkers*10)
+
+	eventCh := make(chan *BaseEvent, i.cfg.NumWorkers*i.cfg.BatchSize)
+
+	g, ctx := errgroup.WithContext(ctx)
+	var workersWg sync.WaitGroup
+
+	g.Go(func() error {
+		return i.process(ctx, msgCh)
+	})
+
+	workersWg.Add(i.cfg.NumWorkers)
+	for w := 0; w < i.cfg.NumWorkers; w++ {
+		workerID := w
+
+		g.Go(func() error {
+			defer workersWg.Done()
+
+			return i.transform(ctx, msgCh, eventCh,workerID)
+		})
+	}
+
+	g.Go(func() error {
+		workersWg.Wait()
+
+		close(eventCh)
+
+		return nil
+	})
+
+	g.Go(func() error { return i.runBatcher(ctx, eventCh) })
+
+	return g.Wait()
+}
+
+// Batcher collects events and flushes in batches
+func (i *Ingestor) runBatcher(ctx context.Context, eventCh <-chan *BaseEvent) error {
+	batch := make([]*BaseEvent, 0, i.cfg.BatchSize)
+
+	ticker := time.NewTicker(i.cfg.BatchTimeout)
+
+	defer ticker.Stop()
+
+	return i.saveBatch(ctx, ticker, eventCh, batch)
+}
+
+func (i *Ingestor) handleBatch(ctx context.Context, eventCh chan *BaseEvent) error {
+	for {
+		if ctx.Err() != nil {
+			close(eventCh)
+
 			return nil
 		}
 
-		var err error
-		if len(batch) == 1 {
-			err = i.storer.StoreData(ctx, batch[0])
-		} else {
-			err = i.storer.StoreBatch(ctx, batch)
-		}
-
+		msg, err := i.processor.ProcessData(ctx)
 		if err != nil {
-			for _, event := range batch {
-				failedMsg := &DeviceMessage{
-					DeviceID:  event.EntityID,
-					Type:      event.EventType,
-					Timestamp: event.OccurredAt,
-				}
+			_ = i.failures.StoreFailure(ctx, FailedMessage{
+				Stage: "process", Message: msg, Err: err,
+			})
 
-				_ = i.failures.StoreFailure(ctx, FailedMessage{
-					Stage:   "store_batch",
-					Message: failedMsg,
-					Err:     fmt.Errorf("batch store failed: %w", err),
-				})
-			}
+			continue
 		}
 
-		batch = batch[:0]
-		return err
-	}
+		if msg == nil {
+			continue
+		}
 
+		transformedData, err := i.transformer.Transform(ctx, msg)
+		if err != nil {
+			if ctx.Err() != nil {
+				close(eventCh)
+
+				return nil
+			}
+			_ = i.failures.StoreFailure(ctx, FailedMessage{
+				Stage: "transform", Message: msg, Err: err,
+			})
+
+			continue
+		}
+
+		select {
+		case eventCh <- transformedData:
+		case <-ctx.Done():
+			close(eventCh)
+
+			return nil
+		}
+	}
+}
+
+func (i *Ingestor) process(ctx context.Context, msgCh chan *DeviceMessage) error {
+	defer close(msgCh)
+
+	for {
+		if ctx.Err() != nil {
+			return nil
+		}
+
+		msg, err := i.processor.ProcessData(ctx)
+		if err != nil {
+			_ = i.failures.StoreFailure(ctx, FailedMessage{
+				Stage: "process", Message: msg, Err: err,
+			})
+			continue
+		}
+
+		if msg == nil {
+			continue
+		}
+
+		select {
+		case msgCh <- msg:
+		case <-ctx.Done():
+			return nil
+		}
+	}
+}
+
+func (i *Ingestor) transform(ctx context.Context, msgCh chan *DeviceMessage, eventCh chan *BaseEvent, workerID int) error {
 	for {
 		select {
 		case <-ctx.Done():
-			_ = flush()
+			return nil
+
+		case msg, ok := <-msgCh:
+			if !ok {
+				return nil
+			}
+
+			transformedData, err := i.transformer.Transform(ctx, msg)
+			if err != nil {
+				if ctx.Err() != nil {
+					return nil
+				}
+				_ = i.failures.StoreFailure(ctx, FailedMessage{
+					Stage:   "transform",
+					Message: msg,
+					Err:     fmt.Errorf("worker %d: %w", workerID, err),
+				})
+				continue
+			}
+
+			select {
+			case eventCh <- transformedData:
+			case <-ctx.Done():
+				return nil
+			}
+		}
+	}
+}
+
+func (i *Ingestor) saveBatch(ctx context.Context, ticker *time.Ticker, eventCh <-chan *BaseEvent, batch []*BaseEvent) error {
+	for {
+		select {
+		case <-ctx.Done():
+			_ = i.storeBatch(ctx, batch, ticker)
+
 			return nil
 
 		case <-ticker.C:
-			if err := flush(); err != nil {
+			if err := i.storeBatch(ctx, batch, ticker); err != nil {
+				batch = batch[:0]
+
 				continue
 			}
 
 		case event, ok := <-eventCh:
 			if !ok {
-				_ = flush()
+				_ = i.storeBatch(ctx, batch, ticker)
+				batch = batch[:0]
+
 				return nil
 			}
 
 			batch = append(batch, event)
 
 			if len(batch) >= i.cfg.BatchSize {
-				if err := flush(); err != nil {
+				if err := i.storeBatch(ctx, batch, ticker); err != nil {
 					continue
 				}
 			}
 		}
 	}
+}
+
+func (i *Ingestor) storeBatch(ctx context.Context, batch []*BaseEvent, ticker *time.Ticker) error {
+	if len(batch) == 0 {
+		return nil
+	}
+
+	var err error
+	if len(batch) == 1 {
+		err = i.storer.StoreData(ctx, batch[0])
+	} else {
+		err = i.storer.StoreBatch(ctx, batch)
+	}
+
+	if err != nil {
+		for _, event := range batch {
+			failedMsg := &DeviceMessage{
+				DeviceID:  event.EntityID,
+				Type:      event.EventType,
+				Timestamp: event.OccurredAt,
+			}
+
+			_ = i.failures.StoreFailure(ctx, FailedMessage{
+				Stage:   "store_batch",
+				Message: failedMsg,
+				Err:     fmt.Errorf("batch store failed: %w", err),
+			})
+		}
+	}
+
+	ticker.Reset(i.cfg.BatchTimeout)
+
+	return err
 }

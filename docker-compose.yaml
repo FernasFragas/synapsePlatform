@@ -33,6 +33,7 @@ services:
       
       # Create topics
       kafka-topics --create --topic ingestion.raw --partitions 10 --replication-factor 1 --if-not-exists --bootstrap-server kafka:9092 &&  
+      kafka-topics --create --topic ingestion.dlq --partitions 3 --replication-factor 1 --if-not-exists --bootstrap-server kafka:9092 &&
       
       echo 'Kafka topics created successfully'
       "
