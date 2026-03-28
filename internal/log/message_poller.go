@@ -19,8 +19,8 @@ func NewMessagePoller(log *slog.Logger, poller ingestor.MessagePoller) *MessageP
 }
 
 // PollMessage logs the consuming messages, calling handler for each.
-func (mp *MessagePoller) PollMessage(ctx context.Context) (*ingestor.DeviceMessage, error) {
-	msg, err := mp.poller.PollMessage(ctx)
+func (mp *MessagePoller) PollMessage(ctx context.Context) (*ingestor.DeviceMessage, string, error) {
+	msg, receiptHandle, err := mp.poller.PollMessage(ctx)
 	if err != nil || msg == nil {
 		attrs := []any{"error", err}
 		if msg != nil {
@@ -31,18 +31,48 @@ func (mp *MessagePoller) PollMessage(ctx context.Context) (*ingestor.DeviceMessa
 			)
 		}
 
+		if receiptHandle != "" {
+			attrs = append(attrs, "receipt_handle", receiptHandle)
+		}
+
 		mp.logger.Error("failed to poll message", attrs...)
 
-		return msg, err
+		return msg, receiptHandle, err
+	}
+
+	if msg == nil {
+		mp.logger.Debug("no message available")
+
+		return nil, "", nil
 	}
 
 	mp.logger.Info("polled message",
 		"device_id", msg.DeviceID,
 		"type", msg.Type,
 		"timestamp", msg.Timestamp.String(),
+		"receipt_handle", receiptHandle,
 	)
 
-	return msg, nil
+	return msg, receiptHandle, nil
+}
+
+// AckMessageSuccess logs message acknowledgment.
+func (mp *MessagePoller) AckMessageSuccess(ctx context.Context, receiptHandle string) error {
+	err := mp.poller.AckMessageSuccess(ctx, receiptHandle)
+	if err != nil {
+		mp.logger.Error("failed to acknowledge message",
+			"receipt_handle", receiptHandle,
+			"error", err,
+		)
+
+		return err
+	}
+
+	mp.logger.Debug("acknowledged message",
+		"receipt_handle", receiptHandle,
+	)
+
+	return nil
 }
 
 // Close logs gracefully shuts down the consumer.

@@ -15,6 +15,21 @@ APP_PORT=8080
 KAFKA_BROKER="localhost:9092"
 KAFKA_TOPIC="ingestion.raw"
 DB_PATH="data.db"
+APP_LOG="${REPORT_DIR}/app-logs-${TIMESTAMP}.log"
+# Modify check_app() to also start log capture:
+check_app() {
+    if ! lsof -ti :$APP_PORT > /dev/null 2>&1; then
+        log_error "Application not running on port $APP_PORT"
+        exit 1
+    fi
+    APP_PID=$(lsof -ti :$APP_PORT)
+    log_info "Application is running (PID: $APP_PID)"
+
+    # Capture stdout/stderr of running process
+    log_info "Capturing application logs to: $APP_LOG"
+    # Note: This requires the process to have been started with output redirection
+    # or use strace/dtrace (platform-specific)
+}
 
 cleanup() {
     log_info "Cleaning up background processes..."
@@ -116,9 +131,15 @@ stop_lag_monitoring() {
     fi
 
     if [ -f "$LAG_LOG" ]; then
-        PEAK_LAG=$(cat "$LAG_LOG" | awk '{print $2}' | grep -v "N/A" | sort -n | tail -1)
-        AVG_LAG=$(cat "$LAG_LOG" | awk '{sum+=$2; count++} END {if(count>0) print int(sum/count); else print 0}')
-        FINAL_LAG=$(tail -1 "$LAG_LOG" | awk '{print $2}')
+        # Filter for valid numeric values only
+        PEAK_LAG=$(cat "$LAG_LOG" | awk '{print $2}' | grep -v "N/A" | grep -E '^[0-9]+$' | sort -n | tail -1)
+        AVG_LAG=$(cat "$LAG_LOG" | awk '{if($2 != "N/A" && $2 ~ /^[0-9]+$/) {sum+=$2; count++}} END {if(count>0) print int(sum/count); else print 0}')
+        FINAL_LAG=$(tail -1 "$LAG_LOG" | awk '{if($2 == "N/A" || $2 !~ /^[0-9]+$/) print 0; else print $2}')
+
+        # Provide defaults if empty
+        PEAK_LAG=${PEAK_LAG:-0}
+        AVG_LAG=${AVG_LAG:-0}
+        FINAL_LAG=${FINAL_LAG:-0}
 
         echo "$PEAK_LAG|$AVG_LAG|$FINAL_LAG"
     else
@@ -489,6 +510,16 @@ TEST1_PEAK_LAG=$(echo $LAG_STATS | cut -d'|' -f1)
 TEST1_AVG_LAG=$(echo $LAG_STATS | cut -d'|' -f2)
 TEST1_FINAL_LAG=$(echo $LAG_STATS | cut -d'|' -f3)
 
+# Ensure they're valid integers (default to 0 if empty or invalid)
+TEST1_PEAK_LAG=${TEST1_PEAK_LAG:-0}
+TEST1_AVG_LAG=${TEST1_AVG_LAG:-0}
+TEST1_FINAL_LAG=${TEST1_FINAL_LAG:-0}
+
+# Validate they are numeric
+TEST1_PEAK_LAG=$(echo "$TEST1_PEAK_LAG" | grep -E '^[0-9]+$' || echo 0)
+TEST1_AVG_LAG=$(echo "$TEST1_AVG_LAG" | grep -E '^[0-9]+$' || echo 0)
+TEST1_FINAL_LAG=$(echo "$TEST1_FINAL_LAG" | grep -E '^[0-9]+$' || echo 0)
+
 TEST1_END_EVENTS=$(sqlite3 $DB_PATH "SELECT COUNT(*) FROM events;")
 TEST1_PROCESSED=$((TEST1_END_EVENTS - TEST1_START_EVENTS))
 TEST1_FAILED=$(sqlite3 $DB_PATH "SELECT COUNT(*) FROM failed_messages;")
@@ -520,7 +551,7 @@ cat >> $REPORT_FILE << EOF
 **Analysis:**
 EOF
 
-if [ "$TEST1_PEAK_LAG" -gt 100 ]; then
+if [ "${TEST1_PEAK_LAG:-0}" -gt 100 ]; then
     echo "- ⚠️  Peak LAG exceeded 100 - consumer falling behind even at low load" >> $REPORT_FILE
 fi
 
@@ -572,6 +603,15 @@ TEST2_PEAK_LAG=$(echo $LAG_STATS | cut -d'|' -f1)
 TEST2_AVG_LAG=$(echo $LAG_STATS | cut -d'|' -f2)
 TEST2_FINAL_LAG=$(echo $LAG_STATS | cut -d'|' -f3)
 
+# Ensure they're valid integers (default to 0 if empty or invalid)
+TEST2_PEAK_LAG=${TEST2_PEAK_LAG:-0}
+TEST2_AVG_LAG=${TEST2_AVG_LAG:-0}
+TEST2_FINAL_LAG=${TEST2_FINAL_LAG:-0}
+# Validate they are numeric
+TEST2_PEAK_LAG=$(echo "$TEST2_PEAK_LAG" | grep -E '^[0-9]+$' || echo 0)
+TEST2_AVG_LAG=$(echo "$TEST2_AVG_LAG" | grep -E '^[0-9]+$' || echo 0)
+TEST2_FINAL_LAG=$(echo "$TEST2_FINAL_LAG" | grep -E '^[0-9]+$' || echo 0)
+
 TEST2_END_EVENTS=$(sqlite3 $DB_PATH "SELECT COUNT(*) FROM events;")
 TEST2_PROCESSED=$((TEST2_END_EVENTS - TEST2_START_EVENTS))
 TEST2_FAILED=$(sqlite3 $DB_PATH "SELECT COUNT(*) FROM failed_messages;")
@@ -603,11 +643,11 @@ cat >> $REPORT_FILE << EOF
 **Analysis:**
 EOF
 
-if [ "$TEST2_PEAK_LAG" -gt 1000 ]; then
+if [ "${TEST2_PEAK_LAG:-0}" -gt 1000 ]; then
     echo "- 🚨 Peak LAG exceeded 1000 - severe bottleneck detected" >> $REPORT_FILE
 fi
 
-if [ "$TEST2_AVG_LAG" -gt 500 ]; then
+if [ "${TEST2_AVG_LAG:-0}" -gt 500 ]; then
     echo "- ⚠️  Average LAG > 500 - consumer consistently falling behind" >> $REPORT_FILE
 fi
 
@@ -655,6 +695,16 @@ TEST3_PEAK_LAG=$(echo $LAG_STATS | cut -d'|' -f1)
 TEST3_AVG_LAG=$(echo $LAG_STATS | cut -d'|' -f2)
 TEST3_FINAL_LAG=$(echo $LAG_STATS | cut -d'|' -f3)
 
+# Ensure they're valid integers (default to 0 if empty or invalid)
+TEST3_PEAK_LAG=${TEST3_PEAK_LAG:-0}
+TEST3_AVG_LAG=${TEST3_AVG_LAG:-0}
+TEST3_FINAL_LAG=${TEST3_FINAL_LAG:-0}
+
+# Validate they are numeric
+TEST3_PEAK_LAG=$(echo "$TEST3_PEAK_LAG" | grep -E '^[0-9]+$' || echo 0)
+TEST3_AVG_LAG=$(echo "$TEST3_AVG_LAG" | grep -E '^[0-9]+$' || echo 0)
+TEST3_FINAL_LAG=$(echo "$TEST3_FINAL_LAG" | grep -E '^[0-9]+$' || echo 0)
+
 TEST3_END_EVENTS=$(sqlite3 $DB_PATH "SELECT COUNT(*) FROM events;")
 TEST3_PROCESSED=$((TEST3_END_EVENTS - TEST3_START_EVENTS))
 TEST3_FAILED=$(sqlite3 $DB_PATH "SELECT COUNT(*) FROM failed_messages;")
@@ -686,11 +736,11 @@ cat >> $REPORT_FILE << EOF
 **Analysis:**
 EOF
 
-if [ "$TEST3_PEAK_LAG" -gt 10000 ]; then
+if [ "${TEST3_PEAK_LAG:-0}" -gt 10000 ]; then
     echo "- 🚨 Peak LAG exceeded 10,000 - critical bottleneck" >> $REPORT_FILE
 fi
 
-if [ "$TEST3_FINAL_LAG" -gt 1000 ]; then
+if [ "${TEST3_FINAL_LAG:-0}" -gt 1000 ]; then
     echo "- 🚨 Final LAG still > 1000 after 30s wait - backlog not clearing" >> $REPORT_FILE
 fi
 
@@ -785,7 +835,7 @@ CREATE INDEX IF NOT EXISTS idx_ingested_event ON events(ingested_at DESC, event_
 EOF
 fi
 
-if [ "$TEST3_PEAK_LAG" -gt 10000 ]; then
+if [ "${TEST3_PEAK_LAG:-0}" -gt 10000 ]; then
     cat >> $REPORT_FILE << EOF
 ### 🔴 Severe Throughput Bottleneck
 - **Peak LAG:** $TEST3_PEAK_LAG messages
@@ -799,7 +849,7 @@ if [ "$TEST3_PEAK_LAG" -gt 10000 ]; then
 EOF
 fi
 
-if [ $TOTAL_FAILED -gt 0 ]; then
+if [ "${TOTAL_FAILED:-0}" -gt 0 ]; then
     cat >> $REPORT_FILE << EOF
 ### ⚠️  Failed Messages Detected
 - **Count:** $TOTAL_FAILED

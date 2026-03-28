@@ -12,11 +12,14 @@ import (
 )
 
 type MessagePoller struct {
-	poller   ingestor.MessagePoller
-	tracer   trace.Tracer
-	duration metric.Float64Histogram
-	total    metric.Int64Counter
-	errors   metric.Int64Counter
+	poller       ingestor.MessagePoller
+	tracer       trace.Tracer
+	duration     metric.Float64Histogram
+	total        metric.Int64Counter
+	errors       metric.Int64Counter
+	ackDuration  metric.Float64Histogram
+	ackTotal     metric.Int64Counter
+	ackErrors    metric.Int64Counter
 }
 
 func NewMessagePoller(meter metric.Meter, tracer trace.Tracer, poller ingestor.MessagePoller) (*MessagePoller, error) {
@@ -42,41 +45,105 @@ func NewMessagePoller(meter metric.Meter, tracer trace.Tracer, poller ingestor.M
 		return nil, err
 	}
 
+	ackDuration, err := meter.Float64Histogram("ingestor.poller.ack.duration",
+		metric.WithUnit("s"),
+		metric.WithDescription("Time to acknowledge messages"),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	ackTotal, err := meter.Int64Counter("ingestor.poller.ack.total",
+		metric.WithDescription("Total acknowledgment operations by status"),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	ackErrors, err := meter.Int64Counter("ingestor.poller.ack.errors",
+		metric.WithDescription("Acknowledgment errors"),
+	)
+	if err != nil {
+		return nil, err
+	}
+
 	return &MessagePoller{
-		poller:   poller,
-		tracer:   tracer,
-		duration: duration,
-		total:    total,
-		errors:   errors,
+		poller:      poller,
+		tracer:      tracer,
+		duration:    duration,
+		total:       total,
+		errors:      errors,
+		ackDuration: ackDuration,
+		ackTotal:    ackTotal,
+		ackErrors:   ackErrors,
 	}, nil
 }
 
-func (m *MessagePoller) PollMessage(ctx context.Context) (*ingestor.DeviceMessage, error) {
+func (m *MessagePoller) PollMessage(ctx context.Context) (*ingestor.DeviceMessage, string, error) {
+	ctx, span := m.tracer.Start(ctx, "poller.poll_message")
+	defer span.End()
+
 	start := time.Now()
 
-	msg, err := m.poller.PollMessage(ctx)
+	msg, receiptHandle, err := m.poller.PollMessage(ctx)
 
 	elapsed := time.Since(start).Seconds()
 
 	op := attribute.String(AttrOperation, "poll_message")
 
 	if err != nil {
+		span.RecordError(err)
 		m.errors.Add(ctx, 1, metric.WithAttributes(op))
 		m.total.Add(ctx, 1, metric.WithAttributes(op, attribute.String(AttrStatus, StatusError)))
 		m.duration.Record(ctx, elapsed, metric.WithAttributes(op, attribute.String(AttrStatus, StatusError)))
 
-		return msg, err
+		return msg, receiptHandle, err
 	}
 
 	attrs := []attribute.KeyValue{op, attribute.String(AttrStatus, StatusSuccess)}
 	if msg != nil {
 		attrs = append(attrs, attribute.String(AttrDeviceType, msg.Type))
+		span.SetAttributes(
+			attribute.String("device_id", msg.DeviceID),
+			attribute.String("device_type", msg.Type),
+			attribute.String("receipt_handle", receiptHandle),
+		)
 	}
 
 	m.total.Add(ctx, 1, metric.WithAttributes(attrs...))
 	m.duration.Record(ctx, elapsed, metric.WithAttributes(op, attribute.String(AttrStatus, StatusSuccess)))
 
-	return msg, nil
+	return msg, receiptHandle, nil
+}
+
+// AckMessageSuccess tracks acknowledgment metrics
+func (m *MessagePoller) AckMessageSuccess(ctx context.Context, receiptHandle string) error {
+	ctx, span := m.tracer.Start(ctx, "poller.ack_message")
+	defer span.End()
+
+	span.SetAttributes(attribute.String("receipt_handle", receiptHandle))
+
+	start := time.Now()
+
+	err := m.poller.AckMessageSuccess(ctx, receiptHandle)
+
+	elapsed := time.Since(start).Seconds()
+
+	op := attribute.String(AttrOperation, "ack_message")
+
+	if err != nil {
+		span.RecordError(err)
+		m.ackErrors.Add(ctx, 1, metric.WithAttributes(op))
+		m.ackTotal.Add(ctx, 1, metric.WithAttributes(op, attribute.String(AttrStatus, StatusError)))
+		m.ackDuration.Record(ctx, elapsed, metric.WithAttributes(op, attribute.String(AttrStatus, StatusError)))
+
+		return err
+	}
+
+	m.ackTotal.Add(ctx, 1, metric.WithAttributes(op, attribute.String(AttrStatus, StatusSuccess)))
+	m.ackDuration.Record(ctx, elapsed, metric.WithAttributes(op, attribute.String(AttrStatus, StatusSuccess)))
+
+	return nil
 }
 
 func (m *MessagePoller) Close(ctx context.Context) error {

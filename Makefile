@@ -250,3 +250,10 @@ perf-trend:
 		awk -F'|' '{gsub(/^[ \t]+|[ \t]+$$/, "", $$3); gsub(/^[ \t]+|[ \t]+$$/, "", $$4); \
 		printf "%-20s %s (Success: %s)\n", $$2, $$3, $$4}' || \
 		echo "No performance data available yet."
+
+## run-with-logs: Run the application and save logs to file
+run-with-logs:
+	@mkdir -p performance-reports
+	@echo "🚀 Starting application with log capture..."
+	@echo "📝 Logs will be saved to: performance-reports/app-logs-$$(date +%Y%m%d-%H%M%S).log"
+	@go run $(MAIN_PATH) > performance-reports/app-logs-$$(date +%Y%m%d-%H%M%S).log 2>&1

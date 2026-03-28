@@ -20,6 +20,9 @@ type KafkaConsumer struct {
 	mu       sync.Mutex
 	lastPoll time.Time
 	maxStale time.Duration
+
+	pendingMessages map[string]kafka.Message
+	messageMu       sync.RWMutex
 }
 
 // StreamingConfigs holds configuration for message broker connections.
@@ -33,13 +36,13 @@ type StreamingConfigs struct {
 
 func NewConsumer(config StreamingConfigs, topic string, maxStale time.Duration) *KafkaConsumer {
 	reader := kafka.NewReader(kafka.ReaderConfig{
-		Brokers:        config.Brokers,
-		GroupID:        config.GroupID,
-		Topic:          topic,
-		MinBytes:       config.MinBytes,
-		MaxBytes:       config.MaxBytes,
-		CommitInterval: time.Second,
-		MaxWait:        500 * time.Millisecond,  // Don't wait too long
+		Brokers:          config.Brokers,
+		GroupID:          config.GroupID,
+		Topic:            topic,
+		MinBytes:         config.MinBytes,
+		MaxBytes:         config.MaxBytes,
+		CommitInterval:   time.Second,
+		MaxWait:          500 * time.Millisecond, // Don't wait too long
 		ReadBatchTimeout: 100 * time.Millisecond,
 	})
 
@@ -48,21 +51,18 @@ func NewConsumer(config StreamingConfigs, topic string, maxStale time.Duration) 
 		reader:   reader,
 		lastPoll: time.Now(),
 		maxStale: maxStale,
+		pendingMessages: make(map[string]kafka.Message),
 	}
 }
 
-func (c *KafkaConsumer) PollMessage(ctx context.Context) (*ingestor.DeviceMessage, error) {
+func (c *KafkaConsumer) PollMessage(ctx context.Context) (*ingestor.DeviceMessage, string, error) {
 	select {
 	case <-ctx.Done():
-		return nil, nil
+		return nil, "", nil
 	default:
 		kafkaMsg, err := c.reader.FetchMessage(ctx)
 		if err != nil {
-			return nil, err
-		}
-
-		if err := c.reader.CommitMessages(ctx, kafkaMsg); err != nil {
-			return nil, err
+			return nil, "", err
 		}
 
 		c.mu.Lock()
@@ -71,12 +71,22 @@ func (c *KafkaConsumer) PollMessage(ctx context.Context) (*ingestor.DeviceMessag
 
 		var deviceMessage ingestor.DeviceMessage
 		if err := json.Unmarshal(kafkaMsg.Value, &deviceMessage); err != nil {
-			return nil, err
+			return nil, "", err
 		}
 
 		deviceMessage.Headers = c.convertHeaders(kafkaMsg.Headers)
 
-		return &deviceMessage, nil
+		// Generate receipt handle (could use UUID, or encode partition+offset)
+		receiptHandle := fmt.Sprintf("%s-%d-%d",
+			kafkaMsg.Topic,
+			kafkaMsg.Partition,
+			kafkaMsg.Offset)
+		// Store the kafka message for later acknowledgment
+		c.messageMu.Lock()
+		c.pendingMessages[receiptHandle] = kafkaMsg
+		c.messageMu.Unlock()
+
+		return &deviceMessage, receiptHandle, nil
 	}
 }
 
@@ -96,6 +106,28 @@ func (c *KafkaConsumer) Check(ctx context.Context) error {
 
 func (c *KafkaConsumer) Close(context.Context) error {
 	return c.reader.Close()
+}
+
+func (c *KafkaConsumer) AckMessageSuccess(ctx context.Context, receiptHandle string) error {
+	c.messageMu.Lock()
+
+	kafkaMsg, exists := c.pendingMessages[receiptHandle]
+	if !exists {
+		c.messageMu.Unlock()
+
+		return fmt.Errorf("receipt handle not found: %s", receiptHandle)
+	}
+
+	delete(c.pendingMessages, receiptHandle)
+	c.messageMu.Unlock()
+
+	err := c.reader.CommitMessages(ctx, kafkaMsg)
+	if err != nil {
+		return fmt.Errorf("failed to commit kafka message (partition=%d, offset=%d): %w",
+			kafkaMsg.Partition, kafkaMsg.Offset, err)
+	}
+
+	return nil
 }
 
 func (c *KafkaConsumer) convertHeaders(kafkaHeaders []kafka.Header) map[string]string {
