@@ -1,7 +1,7 @@
 # synapsePlatform Performance Test Report
 
-**Test Date:** Wed Mar 25 22:48:26 WET 2026
-**Git Commit:** 3b0fef0
+**Test Date:** Sat Mar 28 18:35:15 WET 2026
+**Git Commit:** 4ec169e
 **Machine:** arm64
 **OS:** Darwin 25.4.0
 
@@ -23,9 +23,9 @@ yes**
 
 ### Baseline Metrics
 ```
-Process Stats:   0.1  0.1  49248 444538080
-Database: 4319|41017|17.09375
-Events in DB: 4319
+Process Stats:   0.4  0.1  27552 444245696
+Database: 80048|0|49.52734375
+Events in DB: 80048
 Kafka LAG: 0
 ```
 
@@ -38,39 +38,38 @@ Kafka LAG: 0
 | Metric | Value |
 |--------|-------|
 | **Target Rate** | 10 msg/sec |
-| **Duration** | 97s |
+| **Duration** | 93s |
 | **Messages Sent** | 600 |
-| **Messages Processed** | 283 |
-| **Failed Messages** | 41604 |
-| **Success Rate** | 47.17% |
-| **Actual Throughput** | 2.9 msg/sec |
-| **Peak Kafka LAG** | 5 |
-| **Average Kafka LAG** | 2 |
+| **Messages Processed** | 600 |
+| **Failed Messages** | 0 |
+| **Success Rate** | 100.00% |
+| **Actual Throughput** | 6.5 msg/sec |
+| **Peak Kafka LAG** | 7 |
+| **Average Kafka LAG** | 4 |
 | **Final Kafka LAG** | 0 |
 | **Error Count** | [0;32m[INFO][0m Sampling application logs for Test1...
        0 |
-| **Process Stats (CPU% MEM% RSS VSZ)** |   0.0  0.1  50240 444538976 |
+| **Process Stats (CPU% MEM% RSS VSZ)** |   0.6  0.1  42160 444529056 |
 
 **Analysis:**
-- ⚠️  Success rate < 100% - check failed_messages table
 
 ### Test 2: Medium Load (100 msg/sec)
 
 | Metric | Value |
 |--------|-------|
 | **Target Rate** | 100 msg/sec |
-| **Duration** | 264s |
+| **Duration** | 300s |
 | **Messages Sent** | 6000 |
-| **Messages Processed** | 2954 |
-| **Failed Messages** | 47617 |
-| **Success Rate** | 49.23% |
-| **Actual Throughput** | 11.2 msg/sec |
-| **Peak Kafka LAG** | 32 |
-| **Average Kafka LAG** | 15 |
+| **Messages Processed** | 6000 |
+| **Failed Messages** | 0 |
+| **Success Rate** | 100.00% |
+| **Actual Throughput** | 20.0 msg/sec |
+| **Peak Kafka LAG** | 10 |
+| **Average Kafka LAG** | 4 |
 | **Final Kafka LAG** | 0 |
 | **Error Count** | [0;32m[INFO][0m Sampling application logs for Test2...
        1 |
-| **Process Stats (CPU% MEM% RSS VSZ)** |   0.0  0.1  46800 444548656 |
+| **Process Stats (CPU% MEM% RSS VSZ)** |   0.5  0.2  57392 444547024 |
 
 **Analysis:**
 
@@ -79,21 +78,21 @@ Kafka LAG: 0
 | Metric | Value |
 |--------|-------|
 | **Target Rate** | 500 msg/sec |
-| **Duration** | 953s |
+| **Duration** | 1144s |
 | **Messages Sent** | 30,000 |
-| **Messages Processed** | 14891 |
-| **Failed Messages** | 77617 |
-| **Success Rate** | 49.64% |
-| **Actual Throughput** | 15.6 msg/sec |
-| **Peak Kafka LAG** | 43 |
-| **Average Kafka LAG** | 21 |
+| **Messages Processed** | 30000 |
+| **Failed Messages** | 0 |
+| **Success Rate** | 100.00% |
+| **Actual Throughput** | 26.2 msg/sec |
+| **Peak Kafka LAG** | 28 |
+| **Average Kafka LAG** | 15 |
 | **Final Kafka LAG** | 0 |
 | **Error Count** | [0;32m[INFO][0m Sampling application logs for Test3...
        2 |
-| **Process Stats (CPU% MEM% RSS VSZ)** |   0.0  0.3 107008 444594960 |
+| **Process Stats (CPU% MEM% RSS VSZ)** |   0.5  0.3 102256 444590768 |
 
 **Analysis:**
-- 📊 Observed throughput ceiling: ~15.6 msg/sec
+- 📊 Observed throughput ceiling: ~26.2 msg/sec
 
 ---
 
@@ -101,15 +100,15 @@ Kafka LAG: 0
 
 | Metric | Value |
 |--------|-------|
-| **Total Events** | 22447 |
-| **Total Failed** | 77617 |
-| **Database Stats** | 22447|77617|41.1640625 |
-| **List Query (20 items)** | 19ms |
+| **Total Events** | 116648 |
+| **Total Failed** | 0 |
+| **Database Stats** | 116648|0|72.1484375 |
+| **List Query (20 items)** | 16ms |
 | **Final Kafka LAG** | 0 |
 
 ### Failed Messages Breakdown
 ```
-store_batch|77617
+
 ```
 
 ---
@@ -118,9 +117,9 @@ store_batch|77617
 
 | Test | Target Rate | Actual Throughput | Success Rate | Peak LAG | Avg LAG |
 |------|-------------|-------------------|--------------|----------|---------|
-| Test 1 | 10 msg/sec | 2.9 msg/sec | 47.17% | 5 | 2 |
-| Test 2 | 100 msg/sec | 11.2 msg/sec | 49.23% | 32 | 15 |
-| Test 3 | 500 msg/sec | 15.6 msg/sec | 49.64% | 43 | 21 |
+| Test 1 | 10 msg/sec | 6.5 msg/sec | 100.00% | 7 | 4 |
+| Test 2 | 100 msg/sec | 20.0 msg/sec | 100.00% | 10 | 4 |
+| Test 3 | 500 msg/sec | 26.2 msg/sec | 100.00% | 28 | 15 |
 
 ---
 
@@ -137,19 +136,14 @@ PRAGMA synchronous=NORMAL;
 ```
 - **Expected improvement:** 30-35 msg/sec → 100-150 msg/sec
 
-### ⚠️  Failed Messages Detected
-- **Count:** 77617
-- **Check:** `sqlite3 data.db "SELECT stage, error FROM failed_messages LIMIT 5;"`
-- **Likely cause:** Invalid test data or validation errors
-
 ---
 
 ## Debug Information
 
-- **Debug log:** ./performance-reports/debug-20260325-224825.log
-- **Kafka LAG log:** ./performance-reports/kafka-lag-20260325-224825.log
-- **Full diagnostics:** Run `cat ./performance-reports/debug-20260325-224825.log` for detailed timeline
+- **Debug log:** ./performance-reports/debug-20260328-183514.log
+- **Kafka LAG log:** ./performance-reports/kafka-lag-20260328-183514.log
+- **Full diagnostics:** Run `cat ./performance-reports/debug-20260328-183514.log` for detailed timeline
 
 ---
 
-**Test completed at:** Wed Mar 25 23:11:11 WET 2026
+**Test completed at:** Sat Mar 28 19:01:45 WET 2026

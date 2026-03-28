@@ -134,7 +134,7 @@ func main() {
 		kafkaProbes = append(kafkaProbes, consumerProbe)
 
 		batchSize := 600                // or cfg.Ingestor.BatchSize
-		batchTimeout := 10 * time.Second // or cfg.Ingestor.BatchTimeout
+		batchTimeout := 2 * time.Second // or cfg.Ingestor.BatchTimeout
 		workersNumber := 3
 
 		run := newIngestionPipeline(

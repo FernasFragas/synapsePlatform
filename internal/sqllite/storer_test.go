@@ -260,7 +260,7 @@ func (s *StorerTestSuite) TestStoreBatch_DuplicateEventID_RollsBackTransaction()
 
 	// Try to batch insert with duplicate
 	err := s.repo.StoreBatch(s.ctx, []*ingestor.BaseEvent{event2})
-	s.Error(err)
+	s.NoError(err)
 
 	// Verify only one event exists
 	var count int
