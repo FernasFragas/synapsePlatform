@@ -133,9 +133,9 @@ func main() {
 		consumerProbe = synnapLog.NewHealthProbe(healthLogger, consumerProbe)
 		kafkaProbes = append(kafkaProbes, consumerProbe)
 
-		batchSize := 600                // or cfg.Ingestor.BatchSize
-		batchTimeout := 2 * time.Second // or cfg.Ingestor.BatchTimeout
-		workersNumber := 3
+		batchSize := 50                  // Optimal
+		batchTimeout := 500 * time.Millisecond  // Optimal
+		workersNumber := 2
 
 		run := newIngestionPipeline(
 			logger,

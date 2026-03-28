@@ -2,6 +2,8 @@
 
 | Date | Report | Throughput (Test 2) | Success Rate | Peak LAG | Avg LAG | Query Latency |
 |------|--------|---------------------|--------------|----------|---------|---------------|
+| 20260328-202303 | [Report](./synapse-performance-report-20260328-202303.md) | 20.3 msg/sec | 100.00% | 22 | 7 | 15ms |
+| 20260328-195357 | [Report](./synapse-performance-report-20260328-195357.md) | 20.2 msg/sec | 100.00% | 9 | 5 | 19ms |
 | 20260328-183514 | [Report](./synapse-performance-report-20260328-183514.md) | 20.0 msg/sec | 100.00% | 10 | 4 | 16ms |
 | 20260328-160232 | [Report](./synapse-performance-report-20260328-160232.md) | 20.3 msg/sec | 100.00% | 18 | 9 | 16ms |
 | 20260322-232108 | [Report](./synapse-performance-report-20260322-232108.md) | 22.6 msg/sec | 100.00% | 31 | 16 | 16ms |
