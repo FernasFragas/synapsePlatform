@@ -32,8 +32,12 @@ func (mp *MessagePoller) PollMessage(ctx context.Context) (*ingestor.DeviceMessa
 		}
 
 		mp.logger.Error("failed to poll message", attrs...)
+	}
 
-		return msg, err
+	if msg == nil {
+		mp.logger.Debug("no message available")
+
+		return nil, nil
 	}
 
 	mp.logger.Info("polled message",

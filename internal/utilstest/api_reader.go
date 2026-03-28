@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"synapsePlatform/internal/ingestor"
+
 	mock_api "synapsePlatform/internal/utilstest/mocksgen/api"
 
 	"go.uber.org/mock/gomock"

@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"synapsePlatform/internal/ingestor"
@@ -34,12 +35,12 @@ func NewRepo(dbPath string) (*Repo, error) {
 
 	// Configure SQLite for optimal performance
 	pragmas := []string{
-		"PRAGMA journal_mode=WAL",           // Enable Write-Ahead Logging
-		"PRAGMA busy_timeout=5000",          // Wait 5s on lock contention
-		"PRAGMA synchronous=NORMAL",         // Balance durability vs speed
-		"PRAGMA cache_size=-64000",          // 64MB cache (negative = KB)
-		"PRAGMA foreign_keys=ON",            // Enable foreign key constraints
-		"PRAGMA temp_store=MEMORY",          // Store temp tables in memory
+		"PRAGMA journal_mode=WAL",   // Enable Write-Ahead Logging
+		"PRAGMA busy_timeout=5000",  // Wait 5s on lock contention
+		"PRAGMA synchronous=NORMAL", // Balance durability vs speed
+		"PRAGMA cache_size=-64000",  // 64MB cache (negative = KB)
+		"PRAGMA foreign_keys=ON",    // Enable foreign key constraints
+		"PRAGMA temp_store=MEMORY",  // Store temp tables in memory
 	}
 
 	for _, pragma := range pragmas {
@@ -49,8 +50,8 @@ func NewRepo(dbPath string) (*Repo, error) {
 	}
 
 	// Set connection pool limits (SQLite works best with limited concurrency)
-	db.SetMaxOpenConns(5)
-	db.SetMaxIdleConns(2)
+	db.SetMaxOpenConns(1)
+	db.SetMaxIdleConns(1)
 	db.SetConnMaxLifetime(0) // Connections never expire
 
 	var database = Repo{
@@ -109,6 +110,82 @@ func (db *Repo) StoreData(ctx context.Context, data *ingestor.BaseEvent) error {
 
 	return nil
 
+}
+
+func (db *Repo) StoreBatch(ctx context.Context, events []*ingestor.BaseEvent) error {
+	if len(events) == 0 {
+		return nil
+	}
+	const (
+		varsPerEvent      = 11
+		maxVars           = 999
+		maxEventsPerChunk = maxVars / varsPerEvent // = 90 events per chunk
+	)
+	// Process events in chunks
+	for i := 0; i < len(events); i += maxEventsPerChunk {
+		end := i + maxEventsPerChunk
+		if end > len(events) {
+			end = len(events)
+		}
+
+		chunk := events[i:end]
+		if err := db.insertChunk(ctx, chunk); err != nil {
+			return fmt.Errorf("failed to insert chunk %d-%d: %w", i, end, err)
+		}
+	}
+
+	return nil
+}
+func (db *Repo) insertChunk(ctx context.Context, events []*ingestor.BaseEvent) error {
+	tx, err := db.Db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	placeholders := make([]string, 0, len(events))
+	args := make([]interface{}, 0, len(events)*11)
+
+	for _, event := range events {
+		placeholders = append(placeholders, "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+
+		dataJSON, err := json.Marshal(event.Data)
+		if err != nil {
+			return fmt.Errorf("failed to marshal data: %w", err)
+		}
+
+		args = append(args,
+			event.EventID.String(),
+			event.Domain,
+			event.EventType,
+			event.EntityID,
+			event.EntityType,
+			event.OccurredAt,
+			event.IngestedAt,
+			event.Source,
+			event.SchemaVersion,
+			string(dataJSON),
+			sql.NullString{},
+		)
+	}
+
+	query := fmt.Sprintf(`
+    INSERT OR IGNORE INTO events (
+        event_id, domain, event_type, entity_id, entity_type,
+        occurred_at, ingested_at, source, schema_version, data, metadata
+    ) VALUES %s
+`, strings.Join(placeholders, ", "))
+
+	_, err = tx.ExecContext(ctx, query, args...)
+	if err != nil {
+		return fmt.Errorf("failed to execute batch insert: %w", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	return nil
 }
 
 func (db *Repo) GetEvent(ctx context.Context, eventID string) (*ingestor.BaseEvent, error) {

@@ -1,4 +1,4 @@
-//go:generate mockgen -source=$GOFILE -destination=../utilstest/mocksgen/api/mocked_server.go
+//go:generate mockgen -source=$GOFILE -destination=../utilstest/mocksgen/api/mocked_$GOFILE
 package api
 
 import (

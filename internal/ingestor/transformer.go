@@ -55,8 +55,12 @@ func (t *MessageTransformer) Transform(ctx context.Context, msg *DeviceMessage) 
 		return nil, err
 	}
 
+	businessKey := fmt.Sprintf("%s|%s|%s",
+		msg.DeviceID, msg.Type, msg.Timestamp.Format(time.RFC3339Nano))
+	eventID := uuid.NewSHA1(uuid.NameSpaceOID, []byte(businessKey))
+
 	return &BaseEvent{
-		EventID:       uuid.New(),
+		EventID:       eventID,
 		Domain:        domain.String(),
 		EventType:     msg.Type,
 		EntityID:      msg.DeviceID,

@@ -12,11 +12,14 @@ import (
 )
 
 type MessagePoller struct {
-	poller   ingestor.MessagePoller
-	tracer   trace.Tracer
-	duration metric.Float64Histogram
-	total    metric.Int64Counter
-	errors   metric.Int64Counter
+	poller       ingestor.MessagePoller
+	tracer       trace.Tracer
+	duration     metric.Float64Histogram
+	total        metric.Int64Counter
+	errors       metric.Int64Counter
+	ackDuration  metric.Float64Histogram
+	ackTotal     metric.Int64Counter
+	ackErrors    metric.Int64Counter
 }
 
 func NewMessagePoller(meter metric.Meter, tracer trace.Tracer, poller ingestor.MessagePoller) (*MessagePoller, error) {
@@ -42,16 +45,44 @@ func NewMessagePoller(meter metric.Meter, tracer trace.Tracer, poller ingestor.M
 		return nil, err
 	}
 
+	ackDuration, err := meter.Float64Histogram("ingestor.poller.ack.duration",
+		metric.WithUnit("s"),
+		metric.WithDescription("Time to acknowledge messages"),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	ackTotal, err := meter.Int64Counter("ingestor.poller.ack.total",
+		metric.WithDescription("Total acknowledgment operations by status"),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	ackErrors, err := meter.Int64Counter("ingestor.poller.ack.errors",
+		metric.WithDescription("Acknowledgment errors"),
+	)
+	if err != nil {
+		return nil, err
+	}
+
 	return &MessagePoller{
-		poller:   poller,
-		tracer:   tracer,
-		duration: duration,
-		total:    total,
-		errors:   errors,
+		poller:      poller,
+		tracer:      tracer,
+		duration:    duration,
+		total:       total,
+		errors:      errors,
+		ackDuration: ackDuration,
+		ackTotal:    ackTotal,
+		ackErrors:   ackErrors,
 	}, nil
 }
 
 func (m *MessagePoller) PollMessage(ctx context.Context) (*ingestor.DeviceMessage, error) {
+	ctx, span := m.tracer.Start(ctx, "poller.poll_message")
+	defer span.End()
+
 	start := time.Now()
 
 	msg, err := m.poller.PollMessage(ctx)
@@ -61,6 +92,7 @@ func (m *MessagePoller) PollMessage(ctx context.Context) (*ingestor.DeviceMessag
 	op := attribute.String(AttrOperation, "poll_message")
 
 	if err != nil {
+		span.RecordError(err)
 		m.errors.Add(ctx, 1, metric.WithAttributes(op))
 		m.total.Add(ctx, 1, metric.WithAttributes(op, attribute.String(AttrStatus, StatusError)))
 		m.duration.Record(ctx, elapsed, metric.WithAttributes(op, attribute.String(AttrStatus, StatusError)))
@@ -71,6 +103,10 @@ func (m *MessagePoller) PollMessage(ctx context.Context) (*ingestor.DeviceMessag
 	attrs := []attribute.KeyValue{op, attribute.String(AttrStatus, StatusSuccess)}
 	if msg != nil {
 		attrs = append(attrs, attribute.String(AttrDeviceType, msg.Type))
+		span.SetAttributes(
+			attribute.String("device_id", msg.DeviceID),
+			attribute.String("device_type", msg.Type),
+		)
 	}
 
 	m.total.Add(ctx, 1, metric.WithAttributes(attrs...))

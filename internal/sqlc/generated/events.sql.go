@@ -12,7 +12,7 @@ import (
 )
 
 const createEvent = `-- name: CreateEvent :one
-INSERT INTO events (
+INSERT OR IGNORE INTO events (
     event_id,
     domain,
     event_type,

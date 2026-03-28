@@ -20,6 +20,9 @@ type KafkaConsumer struct {
 	mu       sync.Mutex
 	lastPoll time.Time
 	maxStale time.Duration
+
+	pendingMessages map[string]kafka.Message
+	messageMu       sync.RWMutex
 }
 
 // StreamingConfigs holds configuration for message broker connections.
@@ -33,12 +36,14 @@ type StreamingConfigs struct {
 
 func NewConsumer(config StreamingConfigs, topic string, maxStale time.Duration) *KafkaConsumer {
 	reader := kafka.NewReader(kafka.ReaderConfig{
-		Brokers:        config.Brokers,
-		GroupID:        config.GroupID,
-		Topic:          topic,
-		MinBytes:       config.MinBytes,
-		MaxBytes:       config.MaxBytes,
-		CommitInterval: time.Second,
+		Brokers:          config.Brokers,
+		GroupID:          config.GroupID,
+		Topic:            topic,
+		MinBytes:         config.MinBytes,
+		MaxBytes:         config.MaxBytes,
+		CommitInterval:   time.Second,
+		MaxWait:          100 * time.Millisecond, // Don't wait too long
+		ReadBatchTimeout: 100 * time.Millisecond,
 	})
 
 	return &KafkaConsumer{
@@ -46,6 +51,7 @@ func NewConsumer(config StreamingConfigs, topic string, maxStale time.Duration) 
 		reader:   reader,
 		lastPoll: time.Now(),
 		maxStale: maxStale,
+		pendingMessages: make(map[string]kafka.Message),
 	}
 }
 
@@ -54,14 +60,11 @@ func (c *KafkaConsumer) PollMessage(ctx context.Context) (*ingestor.DeviceMessag
 	case <-ctx.Done():
 		return nil, nil
 	default:
+		// ReadMessage auto-commits the offset
 		kafkaMsg, err := c.reader.ReadMessage(ctx)
 		if err != nil {
 			return nil, err
 		}
-
-		c.mu.Lock()
-		c.lastPoll = time.Now()
-		c.mu.Unlock()
 
 		var deviceMessage ingestor.DeviceMessage
 		if err := json.Unmarshal(kafkaMsg.Value, &deviceMessage); err != nil {

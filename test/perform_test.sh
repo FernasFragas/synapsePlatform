@@ -15,6 +15,21 @@ APP_PORT=8080
 KAFKA_BROKER="localhost:9092"
 KAFKA_TOPIC="ingestion.raw"
 DB_PATH="data.db"
+APP_LOG="${REPORT_DIR}/app-logs-${TIMESTAMP}.log"
+# Modify check_app() to also start log capture:
+check_app() {
+    if ! lsof -ti :$APP_PORT > /dev/null 2>&1; then
+        log_error "Application not running on port $APP_PORT"
+        exit 1
+    fi
+    APP_PID=$(lsof -ti :$APP_PORT)
+    log_info "Application is running (PID: $APP_PID)"
+
+    # Capture stdout/stderr of running process
+    log_info "Capturing application logs to: $APP_LOG"
+    # Note: This requires the process to have been started with output redirection
+    # or use strace/dtrace (platform-specific)
+}
 
 cleanup() {
     log_info "Cleaning up background processes..."
@@ -116,9 +131,15 @@ stop_lag_monitoring() {
     fi
 
     if [ -f "$LAG_LOG" ]; then
-        PEAK_LAG=$(cat "$LAG_LOG" | awk '{print $2}' | grep -v "N/A" | sort -n | tail -1)
-        AVG_LAG=$(cat "$LAG_LOG" | awk '{sum+=$2; count++} END {if(count>0) print int(sum/count); else print 0}')
-        FINAL_LAG=$(tail -1 "$LAG_LOG" | awk '{print $2}')
+        # Filter for valid numeric values only
+        PEAK_LAG=$(cat "$LAG_LOG" | awk '{print $2}' | grep -v "N/A" | grep -E '^[0-9]+$' | sort -n | tail -1)
+        AVG_LAG=$(cat "$LAG_LOG" | awk '{if($2 != "N/A" && $2 ~ /^[0-9]+$/) {sum+=$2; count++}} END {if(count>0) print int(sum/count); else print 0}')
+        FINAL_LAG=$(tail -1 "$LAG_LOG" | awk '{if($2 == "N/A" || $2 !~ /^[0-9]+$/) print 0; else print $2}')
+
+        # Provide defaults if empty
+        PEAK_LAG=${PEAK_LAG:-0}
+        AVG_LAG=${AVG_LAG:-0}
+        FINAL_LAG=${FINAL_LAG:-0}
 
         echo "$PEAK_LAG|$AVG_LAG|$FINAL_LAG"
     else
@@ -261,9 +282,31 @@ EOF
         peak=$(echo "$peak" | xargs)
         avg=$(echo "$avg" | xargs)
 
-        # Create bar chart (1 block = 5 msg/sec)
-        bars=$(awk "BEGIN {printf \"%.0f\", $throughput / 5}")
-        bar_str=$(printf '█%.0s' $(seq 1 $bars))
+        # Validate throughput is numeric
+        if [[ ! "$throughput" =~ ^[0-9]+\.?[0-9]*$ ]]; then
+            log_debug "Skipping invalid throughput value: $throughput"
+            continue
+        fi
+
+        # Create bar chart (1 block = 5 msg/sec) with validation
+        bars=$(awk "BEGIN {
+            if ($throughput > 0) {
+                printf \"%.0f\", $throughput / 5
+            } else {
+                print \"0\"
+            }
+        }")
+
+        # Ensure bars is a valid number
+        if [[ ! "$bars" =~ ^[0-9]+$ ]]; then
+            bars=0
+        fi
+
+        if [ "$bars" -gt 0 ]; then
+            bar_str=$(printf '█%.0s' $(seq 1 $bars))
+        else
+            bar_str=""
+        fi
 
         echo "| $date | $bar_str $throughput msg/sec |" >> "$CHART_FILE"
     done
@@ -286,13 +329,18 @@ EOF
         avg=$(echo "$avg" | xargs)
         latency=$(echo "$latency" | xargs)
 
+        # Validate throughput
+        if [[ ! "$throughput" =~ ^[0-9]+\.?[0-9]*$ ]]; then
+            continue
+        fi
+
         # Determine status emoji
         throughput_num=$(echo "$throughput" | sed 's/ msg\/sec//')
-        if (( $(echo "$throughput_num >= 100" | bc -l) )); then
+        if (( $(echo "$throughput_num >= 100" | bc -l 2>/dev/null || echo 0) )); then
             status="🟢 Excellent"
-        elif (( $(echo "$throughput_num >= 50" | bc -l) )); then
+        elif (( $(echo "$throughput_num >= 50" | bc -l 2>/dev/null || echo 0) )); then
             status="🟡 Good"
-        elif (( $(echo "$throughput_num >= 25" | bc -l) )); then
+        elif (( $(echo "$throughput_num >= 25" | bc -l 2>/dev/null || echo 0) )); then
             status="🟠 Moderate"
         else
             status="🔴 Poor"
@@ -438,14 +486,25 @@ PROCESS_MONITOR_PID=$!
 # Run test
 log_info "Sending messages..."
 for i in {1..600}; do
-  kcat -b localhost:9092 -t ingestion.raw -P /tmp/test-event.json 2>/dev/null
-  sleep 0.1
+  TIMESTAMP=$(date -u -Iseconds)
+  DEVICE_ID="sensor-$(printf "%03d" $((i % 100)))"  # Rotate through 100 sensors
+  TEMP=$(awk "BEGIN {printf \"%.1f\", 20 + (rand() * 10)}")  # Random temp 20-30°C
 
-  # Log progress every 100 messages
-  if [ $((i % 100)) -eq 0 ]; then
-    CURRENT_LAG=$(get_kafka_lag)
-    log_debug "[Test1] Progress: $i/600, LAG: $CURRENT_LAG"
-  fi
+  cat > /tmp/test-event-${i}.json << EOF
+{
+  "device_id": "$DEVICE_ID",
+  "type": "temperature_sensor",
+  "timestamp": "$TIMESTAMP",
+  "metrics": {
+    "temperature_c": $TEMP,
+    "humidity_percent": 45.0,
+    "air_quality_index": 35
+  }
+}
+EOF
+
+  kcat -b localhost:9092 -t ingestion.raw -P /tmp/test-event-${i}.json 2>/dev/null
+  sleep 0.1
 done
 
 TEST1_END=$(date +%s)
@@ -461,6 +520,16 @@ stop_process_monitoring
 TEST1_PEAK_LAG=$(echo $LAG_STATS | cut -d'|' -f1)
 TEST1_AVG_LAG=$(echo $LAG_STATS | cut -d'|' -f2)
 TEST1_FINAL_LAG=$(echo $LAG_STATS | cut -d'|' -f3)
+
+# Ensure they're valid integers (default to 0 if empty or invalid)
+TEST1_PEAK_LAG=${TEST1_PEAK_LAG:-0}
+TEST1_AVG_LAG=${TEST1_AVG_LAG:-0}
+TEST1_FINAL_LAG=${TEST1_FINAL_LAG:-0}
+
+# Validate they are numeric
+TEST1_PEAK_LAG=$(echo "$TEST1_PEAK_LAG" | grep -E '^[0-9]+$' || echo 0)
+TEST1_AVG_LAG=$(echo "$TEST1_AVG_LAG" | grep -E '^[0-9]+$' || echo 0)
+TEST1_FINAL_LAG=$(echo "$TEST1_FINAL_LAG" | grep -E '^[0-9]+$' || echo 0)
 
 TEST1_END_EVENTS=$(sqlite3 $DB_PATH "SELECT COUNT(*) FROM events;")
 TEST1_PROCESSED=$((TEST1_END_EVENTS - TEST1_START_EVENTS))
@@ -493,7 +562,7 @@ cat >> $REPORT_FILE << EOF
 **Analysis:**
 EOF
 
-if [ "$TEST1_PEAK_LAG" -gt 100 ]; then
+if [ "${TEST1_PEAK_LAG:-0}" -gt 100 ]; then
     echo "- ⚠️  Peak LAG exceeded 100 - consumer falling behind even at low load" >> $REPORT_FILE
 fi
 
@@ -522,13 +591,25 @@ PROCESS_MONITOR_PID=$!
 # Run test
 log_info "Sending messages..."
 for i in {1..6000}; do
-  kcat -b localhost:9092 -t ingestion.raw -P /tmp/test-event.json 2>/dev/null
-  sleep 0.01
+  TIMESTAMP=$(date -u -Iseconds)
+  DEVICE_ID="sensor-$(printf "%03d" $((i % 100)))"  # Rotate through 100 sensors
+  TEMP=$(awk "BEGIN {printf \"%.1f\", 20 + (rand() * 10)}")  # Random temp 20-30°C
 
-  if [ $((i % 1000)) -eq 0 ]; then
-    CURRENT_LAG=$(get_kafka_lag)
-    log_debug "[Test2] Progress: $i/6000, LAG: $CURRENT_LAG"
-  fi
+  cat > /tmp/test-event-${i}.json << EOF
+{
+  "device_id": "$DEVICE_ID",
+  "type": "temperature_sensor",
+  "timestamp": "$TIMESTAMP",
+  "metrics": {
+    "temperature_c": $TEMP,
+    "humidity_percent": 45.0,
+    "air_quality_index": 35
+  }
+}
+EOF
+
+  kcat -b localhost:9092 -t ingestion.raw -P /tmp/test-event-${i}.json 2>/dev/null
+  sleep 0.01
 done
 
 TEST2_END=$(date +%s)
@@ -544,6 +625,15 @@ stop_process_monitoring
 TEST2_PEAK_LAG=$(echo $LAG_STATS | cut -d'|' -f1)
 TEST2_AVG_LAG=$(echo $LAG_STATS | cut -d'|' -f2)
 TEST2_FINAL_LAG=$(echo $LAG_STATS | cut -d'|' -f3)
+
+# Ensure they're valid integers (default to 0 if empty or invalid)
+TEST2_PEAK_LAG=${TEST2_PEAK_LAG:-0}
+TEST2_AVG_LAG=${TEST2_AVG_LAG:-0}
+TEST2_FINAL_LAG=${TEST2_FINAL_LAG:-0}
+# Validate they are numeric
+TEST2_PEAK_LAG=$(echo "$TEST2_PEAK_LAG" | grep -E '^[0-9]+$' || echo 0)
+TEST2_AVG_LAG=$(echo "$TEST2_AVG_LAG" | grep -E '^[0-9]+$' || echo 0)
+TEST2_FINAL_LAG=$(echo "$TEST2_FINAL_LAG" | grep -E '^[0-9]+$' || echo 0)
 
 TEST2_END_EVENTS=$(sqlite3 $DB_PATH "SELECT COUNT(*) FROM events;")
 TEST2_PROCESSED=$((TEST2_END_EVENTS - TEST2_START_EVENTS))
@@ -576,11 +666,11 @@ cat >> $REPORT_FILE << EOF
 **Analysis:**
 EOF
 
-if [ "$TEST2_PEAK_LAG" -gt 1000 ]; then
+if [ "${TEST2_PEAK_LAG:-0}" -gt 1000 ]; then
     echo "- 🚨 Peak LAG exceeded 1000 - severe bottleneck detected" >> $REPORT_FILE
 fi
 
-if [ "$TEST2_AVG_LAG" -gt 500 ]; then
+if [ "${TEST2_AVG_LAG:-0}" -gt 500 ]; then
     echo "- ⚠️  Average LAG > 500 - consumer consistently falling behind" >> $REPORT_FILE
 fi
 
@@ -605,13 +695,25 @@ PROCESS_MONITOR_PID=$!
 # Run test
 log_info "Sending messages..."
 for i in {1..30000}; do
-  kcat -b localhost:9092 -t ingestion.raw -P /tmp/test-event.json 2>/dev/null
-  sleep 0.002
+  TIMESTAMP=$(date -u -Iseconds)
+  DEVICE_ID="sensor-$(printf "%03d" $((i % 100)))"  # Rotate through 100 sensors
+  TEMP=$(awk "BEGIN {printf \"%.1f\", 20 + (rand() * 10)}")  # Random temp 20-30°C
 
-  if [ $((i % 5000)) -eq 0 ]; then
-    CURRENT_LAG=$(get_kafka_lag)
-    log_debug "[Test3] Progress: $i/30000, LAG: $CURRENT_LAG"
-  fi
+  cat > /tmp/test-event-${i}.json << EOF
+{
+  "device_id": "$DEVICE_ID",
+  "type": "temperature_sensor",
+  "timestamp": "$TIMESTAMP",
+  "metrics": {
+    "temperature_c": $TEMP,
+    "humidity_percent": 45.0,
+    "air_quality_index": 35
+  }
+}
+EOF
+
+  kcat -b localhost:9092 -t ingestion.raw -P /tmp/test-event-${i}.json 2>/dev/null
+  sleep 0.001
 done
 
 TEST3_END=$(date +%s)
@@ -627,6 +729,16 @@ stop_process_monitoring
 TEST3_PEAK_LAG=$(echo $LAG_STATS | cut -d'|' -f1)
 TEST3_AVG_LAG=$(echo $LAG_STATS | cut -d'|' -f2)
 TEST3_FINAL_LAG=$(echo $LAG_STATS | cut -d'|' -f3)
+
+# Ensure they're valid integers (default to 0 if empty or invalid)
+TEST3_PEAK_LAG=${TEST3_PEAK_LAG:-0}
+TEST3_AVG_LAG=${TEST3_AVG_LAG:-0}
+TEST3_FINAL_LAG=${TEST3_FINAL_LAG:-0}
+
+# Validate they are numeric
+TEST3_PEAK_LAG=$(echo "$TEST3_PEAK_LAG" | grep -E '^[0-9]+$' || echo 0)
+TEST3_AVG_LAG=$(echo "$TEST3_AVG_LAG" | grep -E '^[0-9]+$' || echo 0)
+TEST3_FINAL_LAG=$(echo "$TEST3_FINAL_LAG" | grep -E '^[0-9]+$' || echo 0)
 
 TEST3_END_EVENTS=$(sqlite3 $DB_PATH "SELECT COUNT(*) FROM events;")
 TEST3_PROCESSED=$((TEST3_END_EVENTS - TEST3_START_EVENTS))
@@ -659,11 +771,11 @@ cat >> $REPORT_FILE << EOF
 **Analysis:**
 EOF
 
-if [ "$TEST3_PEAK_LAG" -gt 10000 ]; then
+if [ "${TEST3_PEAK_LAG:-0}" -gt 10000 ]; then
     echo "- 🚨 Peak LAG exceeded 10,000 - critical bottleneck" >> $REPORT_FILE
 fi
 
-if [ "$TEST3_FINAL_LAG" -gt 1000 ]; then
+if [ "${TEST3_FINAL_LAG:-0}" -gt 1000 ]; then
     echo "- 🚨 Final LAG still > 1000 after 30s wait - backlog not clearing" >> $REPORT_FILE
 fi
 
@@ -758,7 +870,7 @@ CREATE INDEX IF NOT EXISTS idx_ingested_event ON events(ingested_at DESC, event_
 EOF
 fi
 
-if [ "$TEST3_PEAK_LAG" -gt 10000 ]; then
+if [ "${TEST3_PEAK_LAG:-0}" -gt 10000 ]; then
     cat >> $REPORT_FILE << EOF
 ### 🔴 Severe Throughput Bottleneck
 - **Peak LAG:** $TEST3_PEAK_LAG messages
@@ -772,7 +884,7 @@ if [ "$TEST3_PEAK_LAG" -gt 10000 ]; then
 EOF
 fi
 
-if [ $TOTAL_FAILED -gt 0 ]; then
+if [ "${TOTAL_FAILED:-0}" -gt 0 ]; then
     cat >> $REPORT_FILE << EOF
 ### ⚠️  Failed Messages Detected
 - **Count:** $TOTAL_FAILED
@@ -805,21 +917,34 @@ check_regression() {
     local prev_throughput=$(tail -n +4 "$INDEX_FILE" 2>/dev/null | head -n 1 | \
         awk -F'|' '{print $3}' | sed 's/ msg\/sec//' | xargs)
 
-    if [ -z "$prev_throughput" ]; then
-        log_info "First run - no regression check"
+    # Validate inputs
+    if [ -z "$prev_throughput" ] || [ -z "$current_throughput" ]; then
+        log_info "First run or invalid data - no regression check"
         return
     fi
 
-    # Calculate percentage change
-    local change=$(awk "BEGIN {printf \"%.1f\", (($current_throughput - $prev_throughput) / $prev_throughput) * 100}")
+    # Check if values are numeric
+    if ! [[ "$prev_throughput" =~ ^[0-9]+\.?[0-9]*$ ]] || ! [[ "$current_throughput" =~ ^[0-9]+\.?[0-9]*$ ]]; then
+        log_warn "Non-numeric throughput values - skipping regression check"
+        return
+    fi
 
-    if (( $(echo "$change < -10" | bc -l) )); then
+    # Calculate percentage change (with validation)
+    local change=$(awk "BEGIN {
+        if ($prev_throughput == 0) {
+            print \"0\"
+        } else {
+            printf \"%.1f\", (($current_throughput - $prev_throughput) / $prev_throughput) * 100
+        }
+    }")
+
+    if (( $(echo "$change < -10" | bc -l 2>/dev/null || echo 0) )); then
         log_warn "⚠️  REGRESSION DETECTED: Throughput dropped by ${change}% (was: ${prev_throughput} msg/sec, now: ${current_throughput} msg/sec)"
         echo "## 🚨 Regression Alert" >> "$REPORT_FILE"
         echo "" >> "$REPORT_FILE"
         echo "Performance decreased by **${change}%** compared to previous run." >> "$REPORT_FILE"
         echo "" >> "$REPORT_FILE"
-    elif (( $(echo "$change > 10" | bc -l) )); then
+    elif (( $(echo "$change > 10" | bc -l 2>/dev/null || echo 0) )); then
         log_info "🎉 IMPROVEMENT: Throughput increased by ${change}% (was: ${prev_throughput} msg/sec, now: ${current_throughput} msg/sec)"
         echo "## 🎉 Performance Improvement" >> "$REPORT_FILE"
         echo "" >> "$REPORT_FILE"

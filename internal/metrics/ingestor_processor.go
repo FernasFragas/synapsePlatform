@@ -13,11 +13,14 @@ import (
 )
 
 type IngestorProcessor struct {
-	processor ingestor.DataProcessor
-	tracer    trace.Tracer
-	duration  metric.Float64Histogram
-	total     metric.Int64Counter
-	errors    metric.Int64Counter
+	processor   ingestor.DataProcessor
+	tracer      trace.Tracer
+	duration    metric.Float64Histogram
+	total       metric.Int64Counter
+	errors      metric.Int64Counter
+	ackDuration metric.Float64Histogram
+	ackTotal    metric.Int64Counter
+	ackErrors   metric.Int64Counter
 }
 
 func NewIngestorProcessor(meter metric.Meter, tracer trace.Tracer, processor ingestor.DataProcessor) (*IngestorProcessor, error) {
@@ -28,24 +31,52 @@ func NewIngestorProcessor(meter metric.Meter, tracer trace.Tracer, processor ing
 	if err != nil {
 		return nil, err
 	}
+
 	total, err := meter.Int64Counter("ingestor.process_data.total",
 		metric.WithDescription("Total process_data calls by status"),
 	)
 	if err != nil {
 		return nil, err
 	}
+
 	errorsCounter, err := meter.Int64Counter("ingestor.process_data.errors",
 		metric.WithDescription("Process errors with device context"),
 	)
 	if err != nil {
 		return nil, err
 	}
+
+	ackDuration, err := meter.Float64Histogram("ingestor.ack_data.duration",
+		metric.WithUnit("s"),
+		metric.WithDescription("Time to acknowledge processed data"),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	ackTotal, err := meter.Int64Counter("ingestor.ack_data.total",
+		metric.WithDescription("Total acknowledgment operations by status"),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	ackErrors, err := meter.Int64Counter("ingestor.ack_data.errors",
+		metric.WithDescription("Acknowledgment errors"),
+	)
+	if err != nil {
+		return nil, err
+	}
+
 	return &IngestorProcessor{
-		processor: processor,
-		tracer:    tracer,
-		duration:  duration,
-		total:     total,
-		errors:    errorsCounter,
+		processor:   processor,
+		tracer:      tracer,
+		duration:    duration,
+		total:       total,
+		errors:      errorsCounter,
+		ackDuration: ackDuration,
+		ackTotal:    ackTotal,
+		ackErrors:   ackErrors,
 	}, nil
 }
 
@@ -61,7 +92,6 @@ func (m *IngestorProcessor) ProcessData(ctx context.Context) (*ingestor.DeviceMe
 
 	if err != nil {
 		span.SetStatus(codes.Error, err.Error())
-
 		span.RecordError(err)
 
 		m.errors.Add(ctx, 1, metric.WithAttributes(

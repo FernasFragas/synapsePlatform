@@ -33,7 +33,11 @@ func (il *IngestorProcessor) ProcessData(ctx context.Context) (*ingestor.DeviceM
 		return msg, nil
 	}
 
-	il.logger.Info("message processed", "device_id", msg.DeviceID, "type", msg.Type, "message", msg)
+	il.logger.Info("message processed",
+		"device_id", msg.DeviceID,
+		"type", msg.Type,
+		"message", msg,
+	)
 
 	return msg, nil
 }

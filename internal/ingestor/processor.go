@@ -9,15 +9,14 @@ import (
 // Any message broker (Kafka, RabbitMQ, NATS) must implement this.
 type MessagePoller interface {
 
-	// PollMessage begins consuming messages, calling handler for each
+	// PollMessage returns the device message and a receipt handle for acknowledgment
 	PollMessage(ctx context.Context) (*DeviceMessage, error)
 
-	// Close gracefully shuts down the consumer
 	Close(ctx context.Context) error
 }
 
 type Processor struct {
-	poller MessagePoller
+	poller            MessagePoller
 }
 
 func NewProcessor(poller MessagePoller) *Processor {

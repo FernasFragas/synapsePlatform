@@ -30,8 +30,8 @@ kafka:
   topics:
     - "ingestion.raw"
   dlq_topic: "ingestion.dlq"
-  min_bytes: 10000      # 10KB
-  max_bytes: 10000000   # 10MB
+  min_bytes: 100000      # 10KB
+  max_bytes: 100000000   # 100MB
 
 database:
   path: "data.db"
