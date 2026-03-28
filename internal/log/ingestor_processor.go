@@ -41,17 +41,3 @@ func (il *IngestorProcessor) ProcessData(ctx context.Context) (*ingestor.DeviceM
 
 	return msg, nil
 }
-
-// AckDataSuccess logs message acknowledgment
-func (il *IngestorProcessor) AckDataSuccess(ctx context.Context) error {
-	err := il.processor.AckDataSuccess(ctx)
-	if err != nil {
-		il.logger.Error("failed to acknowledge message", "error", err)
-
-		return err
-	}
-
-	il.logger.Debug("message acknowledged successfully")
-
-	return nil
-}

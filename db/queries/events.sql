@@ -1,5 +1,5 @@
 -- name: CreateEvent :one
-INSERT INTO events (
+INSERT OR IGNORE INTO events (
     event_id,
     domain,
     event_type,
@@ -45,3 +45,4 @@ ORDER BY ingested_at DESC, event_id DESC
 LIMIT ?;
 
 CREATE INDEX IF NOT EXISTS idx_ingested_event ON events(ingested_at DESC, event_id DESC);
+CREATE UNIQUE INDEX idx_business_key ON events(entity_id, event_type, occurred_at);

@@ -18,7 +18,6 @@ import (
 // DataProcessor interface responsible for processing the readings received.
 type DataProcessor interface {
 	ProcessData(ctx context.Context) (*DeviceMessage, error)
-	AckDataSuccess(ctx context.Context) error
 }
 
 type MessageStorer interface {
@@ -133,13 +132,6 @@ func (i *Ingestor) ingestSingle(ctx context.Context) error {
 
 			continue
 		}
-
-		if err := i.processor.AckDataSuccess(ctx); err != nil {
-			// Log but don't fail - message was already processed
-			_ = i.failures.StoreFailure(ctx, FailedMessage{
-				Stage: "ack", Message: msg, Err: err,
-			})
-		}
 	}
 }
 
@@ -243,11 +235,6 @@ func (i *Ingestor) handleBatch(ctx context.Context, eventCh chan *BaseEvent) err
 
 		select {
 		case eventCh <- transformedData:
-			if err := i.processor.AckDataSuccess(ctx); err != nil {
-				_ = i.failures.StoreFailure(ctx, FailedMessage{
-					Stage: "ack", Message: msg, Err: err,
-				})
-			}
 		case <-ctx.Done():
 			close(eventCh)
 
@@ -379,12 +366,6 @@ func (i *Ingestor) storeBatch(ctx context.Context, batch []*BaseEvent, ticker *t
 				Stage:   "store_batch",
 				Message: failedMsg,
 				Err:     fmt.Errorf("batch store failed: %w", err),
-			})
-		}
-	} else {
-		if err := i.processor.AckDataSuccess(ctx); err != nil {
-			_ = i.failures.StoreFailure(ctx, FailedMessage{
-				Stage: "ack", Message: nil, Err: err,
 			})
 		}
 	}

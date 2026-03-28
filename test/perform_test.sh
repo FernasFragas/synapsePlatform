@@ -486,14 +486,25 @@ PROCESS_MONITOR_PID=$!
 # Run test
 log_info "Sending messages..."
 for i in {1..600}; do
-  kcat -b localhost:9092 -t ingestion.raw -P /tmp/test-event.json 2>/dev/null
-  sleep 0.1
+  TIMESTAMP=$(date -u -Iseconds)
+  DEVICE_ID="sensor-$(printf "%03d" $((i % 100)))"  # Rotate through 100 sensors
+  TEMP=$(awk "BEGIN {printf \"%.1f\", 20 + (rand() * 10)}")  # Random temp 20-30°C
 
-  # Log progress every 100 messages
-  if [ $((i % 100)) -eq 0 ]; then
-    CURRENT_LAG=$(get_kafka_lag)
-    log_debug "[Test1] Progress: $i/600, LAG: $CURRENT_LAG"
-  fi
+  cat > /tmp/test-event-${i}.json << EOF
+{
+  "device_id": "$DEVICE_ID",
+  "type": "temperature_sensor",
+  "timestamp": "$TIMESTAMP",
+  "metrics": {
+    "temperature_c": $TEMP,
+    "humidity_percent": 45.0,
+    "air_quality_index": 35
+  }
+}
+EOF
+
+  kcat -b localhost:9092 -t ingestion.raw -P /tmp/test-event-${i}.json 2>/dev/null
+  sleep 0.1
 done
 
 TEST1_END=$(date +%s)
@@ -580,13 +591,25 @@ PROCESS_MONITOR_PID=$!
 # Run test
 log_info "Sending messages..."
 for i in {1..6000}; do
-  kcat -b localhost:9092 -t ingestion.raw -P /tmp/test-event.json 2>/dev/null
-  sleep 0.01
+  TIMESTAMP=$(date -u -Iseconds)
+  DEVICE_ID="sensor-$(printf "%03d" $((i % 100)))"  # Rotate through 100 sensors
+  TEMP=$(awk "BEGIN {printf \"%.1f\", 20 + (rand() * 10)}")  # Random temp 20-30°C
 
-  if [ $((i % 1000)) -eq 0 ]; then
-    CURRENT_LAG=$(get_kafka_lag)
-    log_debug "[Test2] Progress: $i/6000, LAG: $CURRENT_LAG"
-  fi
+  cat > /tmp/test-event-${i}.json << EOF
+{
+  "device_id": "$DEVICE_ID",
+  "type": "temperature_sensor",
+  "timestamp": "$TIMESTAMP",
+  "metrics": {
+    "temperature_c": $TEMP,
+    "humidity_percent": 45.0,
+    "air_quality_index": 35
+  }
+}
+EOF
+
+  kcat -b localhost:9092 -t ingestion.raw -P /tmp/test-event-${i}.json 2>/dev/null
+  sleep 0.01
 done
 
 TEST2_END=$(date +%s)
@@ -672,13 +695,25 @@ PROCESS_MONITOR_PID=$!
 # Run test
 log_info "Sending messages..."
 for i in {1..30000}; do
-  kcat -b localhost:9092 -t ingestion.raw -P /tmp/test-event.json 2>/dev/null
-  sleep 0.002
+  TIMESTAMP=$(date -u -Iseconds)
+  DEVICE_ID="sensor-$(printf "%03d" $((i % 100)))"  # Rotate through 100 sensors
+  TEMP=$(awk "BEGIN {printf \"%.1f\", 20 + (rand() * 10)}")  # Random temp 20-30°C
 
-  if [ $((i % 5000)) -eq 0 ]; then
-    CURRENT_LAG=$(get_kafka_lag)
-    log_debug "[Test3] Progress: $i/30000, LAG: $CURRENT_LAG"
-  fi
+  cat > /tmp/test-event-${i}.json << EOF
+{
+  "device_id": "$DEVICE_ID",
+  "type": "temperature_sensor",
+  "timestamp": "$TIMESTAMP",
+  "metrics": {
+    "temperature_c": $TEMP,
+    "humidity_percent": 45.0,
+    "air_quality_index": 35
+  }
+}
+EOF
+
+  kcat -b localhost:9092 -t ingestion.raw -P /tmp/test-event-${i}.json 2>/dev/null
+  sleep 0.001
 done
 
 TEST3_END=$(date +%s)

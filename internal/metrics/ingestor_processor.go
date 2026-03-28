@@ -128,33 +128,3 @@ func (m *IngestorProcessor) ProcessData(ctx context.Context) (*ingestor.DeviceMe
 
 	return msg, nil
 }
-
-// AckDataSuccess tracks acknowledgment metrics
-func (m *IngestorProcessor) AckDataSuccess(ctx context.Context) error {
-	ctx, span := m.tracer.Start(ctx, "ingestor.ack_data")
-	defer span.End()
-
-	start := time.Now()
-
-	err := m.processor.AckDataSuccess(ctx)
-
-	elapsed := time.Since(start).Seconds()
-
-	op := attribute.String(AttrOperation, "ack_data")
-
-	if err != nil {
-		span.SetStatus(codes.Error, err.Error())
-		span.RecordError(err)
-
-		m.ackErrors.Add(ctx, 1, metric.WithAttributes(op))
-		m.ackTotal.Add(ctx, 1, metric.WithAttributes(op, attribute.String(AttrStatus, StatusError)))
-		m.ackDuration.Record(ctx, elapsed, metric.WithAttributes(op, attribute.String(AttrStatus, StatusError)))
-
-		return err
-	}
-
-	m.ackTotal.Add(ctx, 1, metric.WithAttributes(op, attribute.String(AttrStatus, StatusSuccess)))
-	m.ackDuration.Record(ctx, elapsed, metric.WithAttributes(op, attribute.String(AttrStatus, StatusSuccess)))
-
-	return nil
-}

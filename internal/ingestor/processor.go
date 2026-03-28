@@ -3,7 +3,6 @@ package ingestor
 
 import (
 	"context"
-	"fmt"
 )
 
 // MessagePoller is the port interface for consuming messages
@@ -11,17 +10,13 @@ import (
 type MessagePoller interface {
 
 	// PollMessage returns the device message and a receipt handle for acknowledgment
-	PollMessage(ctx context.Context) (*DeviceMessage, string, error)
-
-	// AckMessageSuccess acknowledges a message using its receipt handle
-	AckMessageSuccess(ctx context.Context, receiptHandle string) error
+	PollMessage(ctx context.Context) (*DeviceMessage, error)
 
 	Close(ctx context.Context) error
 }
 
 type Processor struct {
 	poller            MessagePoller
-	lastReceiptHandle string
 }
 
 func NewProcessor(poller MessagePoller) *Processor {
@@ -31,7 +26,7 @@ func NewProcessor(poller MessagePoller) *Processor {
 }
 
 func (p *Processor) ProcessData(ctx context.Context) (*DeviceMessage, error) {
-	msg, receiptHandle, err := p.poller.PollMessage(ctx)
+	msg, err := p.poller.PollMessage(ctx)
 	if err != nil {
 		return nil, ProcessorError{
 			TypeOfError:            ErrPollingMsg,
@@ -66,14 +61,5 @@ func (p *Processor) ProcessData(ctx context.Context) (*DeviceMessage, error) {
 		}
 	}
 
-	p.lastReceiptHandle = receiptHandle
-
 	return msg, nil
-}
-
-func (p *Processor) AckDataSuccess(ctx context.Context) error {
-	if p.lastReceiptHandle == "" {
-		return fmt.Errorf("no message to acknowledge")
-	}
-	return p.poller.AckMessageSuccess(ctx, p.lastReceiptHandle)
 }

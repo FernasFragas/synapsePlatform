@@ -79,13 +79,13 @@ func NewMessagePoller(meter metric.Meter, tracer trace.Tracer, poller ingestor.M
 	}, nil
 }
 
-func (m *MessagePoller) PollMessage(ctx context.Context) (*ingestor.DeviceMessage, string, error) {
+func (m *MessagePoller) PollMessage(ctx context.Context) (*ingestor.DeviceMessage, error) {
 	ctx, span := m.tracer.Start(ctx, "poller.poll_message")
 	defer span.End()
 
 	start := time.Now()
 
-	msg, receiptHandle, err := m.poller.PollMessage(ctx)
+	msg, err := m.poller.PollMessage(ctx)
 
 	elapsed := time.Since(start).Seconds()
 
@@ -97,7 +97,7 @@ func (m *MessagePoller) PollMessage(ctx context.Context) (*ingestor.DeviceMessag
 		m.total.Add(ctx, 1, metric.WithAttributes(op, attribute.String(AttrStatus, StatusError)))
 		m.duration.Record(ctx, elapsed, metric.WithAttributes(op, attribute.String(AttrStatus, StatusError)))
 
-		return msg, receiptHandle, err
+		return msg, err
 	}
 
 	attrs := []attribute.KeyValue{op, attribute.String(AttrStatus, StatusSuccess)}
@@ -106,44 +106,13 @@ func (m *MessagePoller) PollMessage(ctx context.Context) (*ingestor.DeviceMessag
 		span.SetAttributes(
 			attribute.String("device_id", msg.DeviceID),
 			attribute.String("device_type", msg.Type),
-			attribute.String("receipt_handle", receiptHandle),
 		)
 	}
 
 	m.total.Add(ctx, 1, metric.WithAttributes(attrs...))
 	m.duration.Record(ctx, elapsed, metric.WithAttributes(op, attribute.String(AttrStatus, StatusSuccess)))
 
-	return msg, receiptHandle, nil
-}
-
-// AckMessageSuccess tracks acknowledgment metrics
-func (m *MessagePoller) AckMessageSuccess(ctx context.Context, receiptHandle string) error {
-	ctx, span := m.tracer.Start(ctx, "poller.ack_message")
-	defer span.End()
-
-	span.SetAttributes(attribute.String("receipt_handle", receiptHandle))
-
-	start := time.Now()
-
-	err := m.poller.AckMessageSuccess(ctx, receiptHandle)
-
-	elapsed := time.Since(start).Seconds()
-
-	op := attribute.String(AttrOperation, "ack_message")
-
-	if err != nil {
-		span.RecordError(err)
-		m.ackErrors.Add(ctx, 1, metric.WithAttributes(op))
-		m.ackTotal.Add(ctx, 1, metric.WithAttributes(op, attribute.String(AttrStatus, StatusError)))
-		m.ackDuration.Record(ctx, elapsed, metric.WithAttributes(op, attribute.String(AttrStatus, StatusError)))
-
-		return err
-	}
-
-	m.ackTotal.Add(ctx, 1, metric.WithAttributes(op, attribute.String(AttrStatus, StatusSuccess)))
-	m.ackDuration.Record(ctx, elapsed, metric.WithAttributes(op, attribute.String(AttrStatus, StatusSuccess)))
-
-	return nil
+	return msg, nil
 }
 
 func (m *MessagePoller) Close(ctx context.Context) error {

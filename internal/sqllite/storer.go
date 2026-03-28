@@ -50,8 +50,8 @@ func NewRepo(dbPath string) (*Repo, error) {
 	}
 
 	// Set connection pool limits (SQLite works best with limited concurrency)
-	db.SetMaxOpenConns(5)
-	db.SetMaxIdleConns(2)
+	db.SetMaxOpenConns(1)
+	db.SetMaxIdleConns(1)
 	db.SetConnMaxLifetime(0) // Connections never expire
 
 	var database = Repo{
@@ -170,11 +170,11 @@ func (db *Repo) insertChunk(ctx context.Context, events []*ingestor.BaseEvent) e
 	}
 
 	query := fmt.Sprintf(`
-        INSERT INTO events (
-            event_id, domain, event_type, entity_id, entity_type,
-            occurred_at, ingested_at, source, schema_version, data, metadata
-        ) VALUES %s
-    `, strings.Join(placeholders, ", "))
+    INSERT OR IGNORE INTO events (
+        event_id, domain, event_type, entity_id, entity_type,
+        occurred_at, ingested_at, source, schema_version, data, metadata
+    ) VALUES %s
+`, strings.Join(placeholders, ", "))
 
 	_, err = tx.ExecContext(ctx, query, args...)
 	if err != nil {
