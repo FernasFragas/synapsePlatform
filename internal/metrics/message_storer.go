@@ -129,10 +129,13 @@ func (m *MessageStorer) StoreBatch(ctx context.Context, events []*ingestor.BaseE
 		trace.WithAttributes(
 			attribute.Int("batch_size", len(events)),
 		))
+
 	defer span.End()
+
 	start := time.Now()
 	err := m.storer.StoreBatch(ctx, events)
 	elapsed := time.Since(start).Seconds()
+
 	// Record batch size
 	m.batchSize.Record(ctx, int64(len(events)))
 	if err != nil {
@@ -151,11 +154,14 @@ func (m *MessageStorer) StoreBatch(ctx context.Context, events []*ingestor.BaseE
 			}
 			m.errors.Add(ctx, 1, metric.WithAttributes(domainAttrs...))
 		}
+
 		return err
 	}
+
 	m.batchDuration.Record(ctx, elapsed, metric.WithAttributes(
 		attribute.String(AttrStatus, StatusSuccess),
 	))
+
 	// Count successful stores for each event
 	for _, event := range events {
 		domainAttrs := []attribute.KeyValue{
@@ -168,5 +174,6 @@ func (m *MessageStorer) StoreBatch(ctx context.Context, events []*ingestor.BaseE
 			append(domainAttrs, attribute.String(AttrStatus, StatusSuccess))...,
 		))
 	}
+	
 	return nil
 }

@@ -280,6 +280,38 @@ func (db *Repo) Check(ctx context.Context) error {
 	return db.Db.PingContext(ctx)
 }
 
+type Stats struct {
+	WALPages     int64
+	DBPages      int64
+	PageSize     int64
+	FreelistSize int64
+}
+
+// GetStats.
+func (db *Repo) GetStats(ctx context.Context) (Stats, error) {
+	var stats Stats
+
+	// WAL checkpoint info
+	row := db.Db.QueryRowContext(ctx, "PRAGMA wal_checkpoint(PASSIVE)")
+	var busy, log, checkpointed int
+	if err := row.Scan(&busy, &log, &checkpointed); err != nil {
+		return stats, err
+	}
+	stats.WALPages = int64(log)
+
+	// Database pages
+	row = db.Db.QueryRowContext(ctx, "PRAGMA page_count")
+	row.Scan(&stats.DBPages)
+
+	row = db.Db.QueryRowContext(ctx, "PRAGMA page_size")
+	row.Scan(&stats.PageSize)
+
+	row = db.Db.QueryRowContext(ctx, "PRAGMA freelist_count")
+	row.Scan(&stats.FreelistSize)
+
+	return stats, nil
+}
+
 func (db *Repo) runMigrations() error {
 	_, err := db.Db.Exec(schema)
 	if err != nil {

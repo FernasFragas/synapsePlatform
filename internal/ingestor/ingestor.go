@@ -18,6 +18,7 @@ import (
 // DataProcessor interface responsible for processing the readings received.
 type DataProcessor interface {
 	ProcessData(ctx context.Context) (*DeviceMessage, error)
+	ProcessDataBatch(ctx context.Context, maxMessages int) ([]*DeviceMessage, error)
 }
 
 type MessageStorer interface {
@@ -243,6 +244,7 @@ func (i *Ingestor) handleBatch(ctx context.Context, eventCh chan *BaseEvent) err
 	}
 }
 
+// In internal/ingestor/ingestor.go - modify the process() function
 func (i *Ingestor) process(ctx context.Context, msgCh chan *DeviceMessage) error {
 	defer close(msgCh)
 
@@ -251,22 +253,23 @@ func (i *Ingestor) process(ctx context.Context, msgCh chan *DeviceMessage) error
 			return nil
 		}
 
-		msg, err := i.processor.ProcessData(ctx)
+
+		// Fetch a batch of messages (e.g., 10 at a time)
+		msgs, err := i.processor.ProcessDataBatch(ctx, 10)
 		if err != nil {
 			_ = i.failures.StoreFailure(ctx, FailedMessage{
-				Stage: "process", Message: msg, Err: err,
+				Stage: "process_batch", Message: nil, Err: err,
 			})
 			continue
 		}
 
-		if msg == nil {
-			continue
-		}
-
-		select {
-		case msgCh <- msg:
-		case <-ctx.Done():
-			return nil
+		// Send all messages to workers
+		for _, msg := range msgs {
+			select {
+			case msgCh <- msg:
+			case <-ctx.Done():
+				return nil
+			}
 		}
 	}
 }

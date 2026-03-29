@@ -73,11 +73,12 @@ type JWTConfig struct {
 
 type KafkaConfig struct {
 	Brokers   []string `yaml:"brokers"`
-	GroupID   string   `yaml:"group_id"`
+	GroupID   string   `yaml:"group_id"`    // Not used with Conn approach
 	Topics    []string `yaml:"topics"`
 	DLQTopics string   `yaml:"dlq_topic"`
 	MinBytes  int      `yaml:"min_bytes"`
 	MaxBytes  int      `yaml:"max_bytes"`
+	Partition int      `yaml:"partition"`   // NEW: Required for Conn approach
 }
 
 type DatabaseConfig struct {

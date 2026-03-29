@@ -12,14 +12,15 @@ import (
 )
 
 type MessagePoller struct {
-	poller       ingestor.MessagePoller
-	tracer       trace.Tracer
-	duration     metric.Float64Histogram
-	total        metric.Int64Counter
-	errors       metric.Int64Counter
-	ackDuration  metric.Float64Histogram
-	ackTotal     metric.Int64Counter
-	ackErrors    metric.Int64Counter
+	poller      ingestor.MessagePoller
+	tracer      trace.Tracer
+	duration    metric.Float64Histogram
+	total       metric.Int64Counter
+	errors      metric.Int64Counter
+	ackDuration metric.Float64Histogram
+	ackTotal    metric.Int64Counter
+	ackErrors   metric.Int64Counter
+	batchSize   metric.Int64Histogram
 }
 
 func NewMessagePoller(meter metric.Meter, tracer trace.Tracer, poller ingestor.MessagePoller) (*MessagePoller, error) {
@@ -67,6 +68,13 @@ func NewMessagePoller(meter metric.Meter, tracer trace.Tracer, poller ingestor.M
 		return nil, err
 	}
 
+	batchSize, err := meter.Int64Histogram("ingestor.poller.batch_size",
+		metric.WithDescription("Number of messages polled per batch operation"),
+	)
+	if err != nil {
+		return nil, err
+	}
+
 	return &MessagePoller{
 		poller:      poller,
 		tracer:      tracer,
@@ -76,6 +84,7 @@ func NewMessagePoller(meter metric.Meter, tracer trace.Tracer, poller ingestor.M
 		ackDuration: ackDuration,
 		ackTotal:    ackTotal,
 		ackErrors:   ackErrors,
+		batchSize:   batchSize,
 	}, nil
 }
 
@@ -113,6 +122,76 @@ func (m *MessagePoller) PollMessage(ctx context.Context) (*ingestor.DeviceMessag
 	m.duration.Record(ctx, elapsed, metric.WithAttributes(op, attribute.String(AttrStatus, StatusSuccess)))
 
 	return msg, nil
+}
+
+func (m *MessagePoller) PollMessages(ctx context.Context, maxMessages int) ([]*ingestor.DeviceMessage, error) {
+	ctx, span := m.tracer.Start(ctx, "poller.poll_messages",
+		trace.WithAttributes(
+			attribute.Int("max_messages", maxMessages),
+		))
+	defer span.End()
+
+	start := time.Now()
+	// Try to call PollMessages on the underlying poller
+	batchPoller, ok := m.poller.(interface {
+		PollMessages(ctx context.Context, maxMessages int) ([]*ingestor.DeviceMessage, error)
+	})
+
+	var msgs []*ingestor.DeviceMessage
+
+	var err error
+	if ok {
+		// Use batch polling if available
+		msgs, err = batchPoller.PollMessages(ctx, maxMessages)
+	} else {
+		// Fallback to single message
+		msg, singleErr := m.poller.PollMessage(ctx)
+		if singleErr != nil {
+			err = singleErr
+		} else if msg != nil {
+			msgs = []*ingestor.DeviceMessage{msg}
+		}
+	}
+
+	elapsed := time.Since(start).Seconds()
+	op := attribute.String(AttrOperation, "poll_messages")
+
+	if err != nil {
+		span.RecordError(err)
+
+		m.errors.Add(ctx, 1, metric.WithAttributes(op))
+		m.total.Add(ctx, 1, metric.WithAttributes(op, attribute.String(AttrStatus, StatusError)))
+		m.duration.Record(ctx, elapsed, metric.WithAttributes(op, attribute.String(AttrStatus, StatusError)))
+
+		return msgs, err
+	}
+
+	// Record batch size
+	batchSize := len(msgs)
+	m.batchSize.Record(ctx, int64(batchSize), metric.WithAttributes(op))
+	// Record metrics
+	span.SetAttributes(
+		attribute.Int("messages_polled", batchSize),
+	)
+
+	m.total.Add(ctx, 1, metric.WithAttributes(op, attribute.String(AttrStatus, StatusSuccess)))
+	m.duration.Record(ctx, elapsed, metric.WithAttributes(op, attribute.String(AttrStatus, StatusSuccess)))
+	// Record per-message type distribution
+	typeCount := make(map[string]int)
+
+	for _, msg := range msgs {
+		if msg != nil {
+			typeCount[msg.Type]++
+		}
+	}
+
+	for msgType, count := range typeCount {
+		span.SetAttributes(
+			attribute.Int("type_"+msgType, count),
+		)
+	}
+
+	return msgs, nil
 }
 
 func (m *MessagePoller) Close(ctx context.Context) error {

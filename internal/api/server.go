@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"net/http/pprof"
 	"synapsePlatform/internal"
 	"synapsePlatform/internal/auth"
 	"synapsePlatform/internal/health"
@@ -26,11 +27,14 @@ type Server struct {
 	loggerMiddleware    Middleware
 	rateLimitMiddleware Middleware
 	corsMiddleware      Middleware
-	health              *health.Checker
-	addr                string
+	health         *health.Checker
+	metricsHandler http.Handler
+	addr           string
 }
 
-func NewServer(cfg internal.ServerConfig, events EventReader, validator auth.TokenValidator, loggerMiddleware Middleware, healthChecker *health.Checker) *Server {
+func NewServer(
+	cfg internal.ServerConfig, events EventReader, validator auth.TokenValidator,
+	loggerMiddleware Middleware, healthChecker *health.Checker, metricsHandler http.Handler) *Server {
 	mux := http.NewServeMux()
 
 	s := &Server{
@@ -46,6 +50,7 @@ func NewServer(cfg internal.ServerConfig, events EventReader, validator auth.Tok
 		validator:        validator,
 		loggerMiddleware: loggerMiddleware,
 		health:           healthChecker,
+		metricsHandler:   metricsHandler,
 		addr:             cfg.Address,
 	}
 
@@ -86,6 +91,10 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /readyz", s.health.ReadyzHandler())
 	s.mux.HandleFunc("GET /healthz", s.health.ReadyzHandler())
 
+	if s.metricsHandler != nil {
+		s.mux.Handle("GET /metrics", s.metricsHandler)
+	}
+
 	chain := func(h http.HandlerFunc) http.Handler {
 		return s.recoverPanic(
 			s.requestID(
@@ -98,4 +107,8 @@ func (s *Server) routes() {
 
 	s.mux.Handle("GET /v1/events", chain(s.handleListEvents))
 	s.mux.Handle("GET /v1/events/{id}", chain(s.handleGetEvent))
+
+	s.mux.HandleFunc("/debug/pprof/", pprof.Index)
+	s.mux.HandleFunc("/debug/pprof/profile", pprof.Profile)
+	s.mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
 }

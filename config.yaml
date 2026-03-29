@@ -26,12 +26,13 @@ auth:
 kafka:
   brokers:
     - "localhost:9092"
-  group_id: "synapse-platform-consumer"
+  group_id: "synapse-platform-consumer"  # Not used with Conn approach
   topics:
     - "ingestion.raw"
   dlq_topic: "ingestion.dlq"
-  min_bytes: 100000      # 10KB
-  max_bytes: 100000000   # 100MB
+  min_bytes: 100
+  max_bytes: 10e6
+  partition: 0  # NEW: Specify which partition to read from
 
 database:
   path: "data.db"

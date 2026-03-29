@@ -12,6 +12,8 @@ type MessagePoller interface {
 	// PollMessage returns the device message and a receipt handle for acknowledgment
 	PollMessage(ctx context.Context) (*DeviceMessage, error)
 
+	PollMessages(ctx context.Context, maxMessages int) ([]*DeviceMessage, error)
+
 	Close(ctx context.Context) error
 }
 
@@ -62,4 +64,45 @@ func (p *Processor) ProcessData(ctx context.Context) (*DeviceMessage, error) {
 	}
 
 	return msg, nil
+}
+
+func (p *Processor) ProcessDataBatch(ctx context.Context, maxMessages int) ([]*DeviceMessage, error) {
+	// Try batch polling first
+	if batchPoller, ok := p.poller.(interface {
+		PollMessages(ctx context.Context, maxMessages int) ([]*DeviceMessage, error)
+	}); ok {
+		msgs, err := batchPoller.PollMessages(ctx, maxMessages)
+		if err != nil {
+			return nil, ProcessorError{
+				TypeOfError:            ErrPollingMsg,
+				ErrorOccurredBecauseOf: ErrFailedToPollMsg,
+				Field:                  "msgs",
+				Expected:               "DeviceMessages",
+				Got:                    msgs,
+				Err:                    err,
+			}
+		}
+
+		// Validate all messages
+		validMsgs := make([]*DeviceMessage, 0, len(msgs))
+		for _, msg := range msgs {
+			if msg == nil {
+				continue
+			}
+			if err := msg.ValidateRawMessage(); err != nil {
+				// Could collect these for DLQ
+				continue
+			}
+			validMsgs = append(validMsgs, msg)
+		}
+
+		return validMsgs, nil
+	}
+
+	// Fallback to single message
+	msg, err := p.ProcessData(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return []*DeviceMessage{msg}, nil
 }

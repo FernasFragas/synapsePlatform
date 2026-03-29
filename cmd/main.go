@@ -18,6 +18,7 @@ import (
 	"syscall"
 	"time"
 
+	"go.opentelemetry.io/otel/metric"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -46,10 +47,11 @@ func main() {
 	tracer := providers.Tracer.Tracer("synapse-platform")
 
 	kafkaConfig := kafka.StreamingConfigs{
-		Brokers:  cfg.Kafka.Brokers,
-		GroupID:  cfg.Kafka.GroupID,
-		MinBytes: cfg.Kafka.MinBytes,
-		MaxBytes: cfg.Kafka.MaxBytes,
+		Brokers:   cfg.Kafka.Brokers,
+		GroupID:   cfg.Kafka.GroupID, // Not used
+		MinBytes:  cfg.Kafka.MinBytes,
+		MaxBytes:  cfg.Kafka.MaxBytes,
+		Partition: cfg.Kafka.Partition, // NEW: Pass partition
 	}
 
 	db, err := sqllite.NewRepo(cfg.Database.Path)
@@ -126,32 +128,43 @@ func main() {
 	})
 
 	for _, topic := range cfg.Kafka.Topics {
-		consumer := kafka.NewConsumer(kafkaConfig, topic, 2*time.Minute)
-		consumers = append(consumers, consumer)
+		// Get number of partitions for this topic
+		numPartitions, err := kafka.GetTopicPartitions(ctx, cfg.Kafka.Brokers, topic)
+		if err != nil {
+			logger.Error("Failed to discover partitions", "topic", topic, "error", err)
+			os.Exit(1)
+		}
 
-		var consumerProbe health.Probe = consumer
-		consumerProbe = synnapLog.NewHealthProbe(healthLogger, consumerProbe)
-		kafkaProbes = append(kafkaProbes, consumerProbe)
+		for partition := 0; partition < numPartitions; partition++ {
+			partitionConfig := kafkaConfig
+			partitionConfig.Partition = partition
 
-		batchSize := 50                  // Optimal
-		batchTimeout := 500 * time.Millisecond  // Optimal
-		workersNumber := 2
+			consumer := kafka.NewConsumer(partitionConfig, topic, 2*time.Minute)
+			consumers = append(consumers, consumer)
 
-		run := newIngestionPipeline(
-			logger,
-			meter,
-			tracer,
-			consumer,
-			metricsStore,
-			metricsTransformer,
-			failures,
-			domains,
-			batchSize,
-			batchTimeout,
-			workersNumber,
-		)
+			var consumerProbe health.Probe = consumer
+			consumerProbe = synnapLog.NewHealthProbe(healthLogger, consumerProbe)
 
-		g.Go(func() error { return run(ctx) })
+			kafkaProbes = append(kafkaProbes, consumerProbe)
+			batchSize := 50
+			batchTimeout := 500 * time.Millisecond
+			workersNumber := 2
+			run := newIngestionPipeline(
+				logger,
+				meter,
+				tracer,
+				consumer,
+				metricsStore,
+				metricsTransformer,
+				failures,
+				domains,
+				batchSize,
+				batchTimeout,
+				workersNumber,
+			)
+
+			g.Go(func() error { return run(ctx) })
+		}
 	}
 
 	// Build health checker with all probes
@@ -164,6 +177,7 @@ func main() {
 		authenticator,
 		synnapLog.NewHTTPHandlerLogger(logger),
 		checker,
+		providers.Metrics,
 	)
 
 	logger.Info("system starting",
@@ -217,6 +231,38 @@ func main() {
 		logger.Info("shutdown sequence complete")
 		return nil
 	})
+
+	// JUST FOR MONITOR SQLLITE DELETE AFTE
+	g.Go(func() error {
+		ticker := time.NewTicker(10 * time.Second)
+		defer ticker.Stop()
+
+		walGauge, _ := meter.Int64Gauge("sqlite.wal.pages",
+			metric.WithDescription("Number of pages in WAL file"))
+		dbGauge, _ := meter.Int64Gauge("sqlite.db.pages",
+			metric.WithDescription("Total database pages"))
+		dbSizeGauge, _ := meter.Int64Gauge("sqlite.db.size_bytes",
+			metric.WithDescription("Total database size in bytes"))
+
+		for {
+			select {
+			case <-ctx.Done():
+				return nil
+			case <-ticker.C:
+				stats, err := db.GetStats(ctx)
+				if err != nil {
+					logger.Warn("failed to get SQLite stats", "error", err)
+					continue
+				}
+
+				walGauge.Record(ctx, stats.WALPages)
+				dbGauge.Record(ctx, stats.DBPages)
+				dbSizeGauge.Record(ctx, stats.DBPages*stats.PageSize)
+			}
+		}
+	})
+
+	//DELETE ^
 
 	waitErr := g.Wait()
 
