@@ -28,9 +28,10 @@ type Server struct {
 	corsMiddleware      Middleware
 	health              *health.Checker
 	addr                string
+	metricsHandler      http.Handler
 }
 
-func NewServer(cfg internal.ServerConfig, events EventReader, validator auth.TokenValidator, loggerMiddleware Middleware, healthChecker *health.Checker) *Server {
+func NewServer(cfg internal.ServerConfig, events EventReader, validator auth.TokenValidator, loggerMiddleware Middleware, healthChecker *health.Checker, metricsHandler http.Handler) *Server {
 	mux := http.NewServeMux()
 
 	s := &Server{
@@ -47,6 +48,7 @@ func NewServer(cfg internal.ServerConfig, events EventReader, validator auth.Tok
 		loggerMiddleware: loggerMiddleware,
 		health:           healthChecker,
 		addr:             cfg.Address,
+		metricsHandler:   metricsHandler,
 	}
 
 	s.rateLimitMiddleware = s.rateLimiter(cfg.RateLimit.RequestsPerSecond, cfg.RateLimit.Burst)
@@ -85,6 +87,10 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /livez", health.LivezHandler())
 	s.mux.HandleFunc("GET /readyz", s.health.ReadyzHandler())
 	s.mux.HandleFunc("GET /healthz", s.health.ReadyzHandler())
+
+	if s.metricsHandler != nil {
+		s.mux.Handle("GET /metrics", s.metricsHandler)
+	}
 
 	chain := func(h http.HandlerFunc) http.Handler {
 		return s.recoverPanic(

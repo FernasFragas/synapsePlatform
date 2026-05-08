@@ -4,8 +4,6 @@ import (
 	"context"
 	"log/slog"
 	"synapsePlatform/internal/ingestor"
-
-	"go.opentelemetry.io/otel/trace"
 )
 
 type MessageStorer struct {
@@ -23,13 +21,9 @@ func NewMessageStorer(log *slog.Logger, storer ingestor.MessageStorer) *MessageS
 }
 
 func (s *MessageStorer) StoreData(ctx context.Context, data *ingestor.BaseEvent) error {
-	span := trace.SpanFromContext(ctx)
-	traceID := span.SpanContext().TraceID().String()
-
 	err := s.storer.StoreData(ctx, data)
 	if err != nil {
-		s.logger.Error("failed to store event",
-			"trace_id", traceID,
+		s.logger.ErrorContext(ctx, "failed to store event",
 			"event_id", data.EventID,
 			"domain", data.Domain,
 			"event_type", data.EventType,
@@ -39,8 +33,7 @@ func (s *MessageStorer) StoreData(ctx context.Context, data *ingestor.BaseEvent)
 		return err
 	}
 
-	s.logger.Info("stored event",
-		"trace_id", traceID,
+	s.logger.InfoContext(ctx, "stored event",
 		"event_id", data.EventID,
 		"domain", data.Domain,
 		"event_type", data.EventType,
@@ -55,17 +48,13 @@ func (s *MessageStorer) StoreBatch(ctx context.Context, events []*ingestor.BaseE
 		return nil
 	}
 
-	span := trace.SpanFromContext(ctx)
-	traceID := span.SpanContext().TraceID().String()
-
-	s.logger.Debug("storing batch",
+	s.logger.DebugContext(ctx, "storing batch",
 		"batch_size", len(events),
 	)
 
 	err := s.storer.StoreBatch(ctx, events)
 	if err != nil {
-		s.logger.Error("failed to store batch",
-			"trace_id", traceID,
+		s.logger.ErrorContext(ctx, "failed to store batch",
 			"batch_size", len(events),
 			"error", err,
 		)
@@ -79,8 +68,7 @@ func (s *MessageStorer) StoreBatch(ctx context.Context, events []*ingestor.BaseE
 		domainCounts[event.Domain]++
 	}
 
-	s.logger.Info("stored batch",
-		"trace_id", traceID,
+	s.logger.InfoContext(ctx, "stored batch",
 		"batch_size", len(events),
 		"domains", domainCounts,
 	)

@@ -35,6 +35,21 @@ func (s *HandlerTestSuite) SetupTest() {
 	s.reader = utilstest.NewEventReader(s.T())
 }
 
+func (s *HandlerTestSuite) newTestServer() *api.Server {
+	return api.NewServer(
+		testServerConfig(),
+		s.reader,
+		s.validator,
+		noopMiddleware,
+		health.NewChecker(time.Second),
+		nil,
+	)
+}
+
+var noopMiddleware api.Middleware = func(next http.Handler) http.Handler {
+	return next
+}
+
 // --- helpers ---
 
 func (s *HandlerTestSuite) authorizedRequest(method, target string) *http.Request {
@@ -53,7 +68,7 @@ func (s *HandlerTestSuite) TestListEvents_ValidTokenWithScope_Returns200() {
 	s.withScope("read:events")
 	s.reader.WithEvents([]*ingestor.BaseEvent{validBaseEvent()})
 
-	srv := api.NewServer(testServerConfig(), s.reader, s.validator, noopMiddleware, health.NewChecker(time.Second))
+	srv := s.newTestServer()
 	rec := httptest.NewRecorder()
 	srv.ServeHTTP(rec, s.authorizedRequest(http.MethodGet, "/v1/events"))
 
@@ -73,7 +88,7 @@ func (s *HandlerTestSuite) TestListEvents_EmptyStore_Returns200WithEmptyArray() 
 	s.withScope("read:events")
 	s.reader.WithEvents([]*ingestor.BaseEvent{})
 
-	srv := api.NewServer(testServerConfig(), s.reader, s.validator, noopMiddleware, health.NewChecker(time.Second))
+	srv := s.newTestServer()
 	rec := httptest.NewRecorder()
 	srv.ServeHTTP(rec, s.authorizedRequest(http.MethodGet, "/v1/events"))
 
@@ -83,7 +98,7 @@ func (s *HandlerTestSuite) TestListEvents_EmptyStore_Returns200WithEmptyArray() 
 func (s *HandlerTestSuite) TestListEvents_MissingScope_Returns403() {
 	s.withScope() // valid token, no scopes
 
-	srv := api.NewServer(testServerConfig(), s.reader, s.validator, noopMiddleware, health.NewChecker(time.Second))
+	srv := s.newTestServer()
 	rec := httptest.NewRecorder()
 	srv.ServeHTTP(rec, s.authorizedRequest(http.MethodGet, "/v1/events"))
 
@@ -93,7 +108,7 @@ func (s *HandlerTestSuite) TestListEvents_MissingScope_Returns403() {
 func (s *HandlerTestSuite) TestListEvents_WrongScope_Returns403() {
 	s.withScope("write:events") // wrong scope
 
-	srv := api.NewServer(testServerConfig(), s.reader, s.validator, noopMiddleware, health.NewChecker(time.Second))
+	srv := s.newTestServer()
 	rec := httptest.NewRecorder()
 	srv.ServeHTTP(rec, s.authorizedRequest(http.MethodGet, "/v1/events"))
 
@@ -104,7 +119,7 @@ func (s *HandlerTestSuite) TestListEvents_StorageError_Returns500() {
 	s.withScope("read:events")
 	s.reader.WithListError(errors.New("db connection lost"))
 
-	srv := api.NewServer(testServerConfig(), s.reader, s.validator, noopMiddleware, health.NewChecker(time.Second))
+	srv := s.newTestServer()
 	rec := httptest.NewRecorder()
 	srv.ServeHTTP(rec, s.authorizedRequest(http.MethodGet, "/v1/events"))
 
@@ -118,7 +133,7 @@ func (s *HandlerTestSuite) TestGetEvent_ValidTokenWithScope_Returns200() {
 	s.withScope("read:events")
 	s.reader.WithEvent(event)
 
-	srv := api.NewServer(testServerConfig(), s.reader, s.validator, noopMiddleware, health.NewChecker(time.Second))
+	srv := s.newTestServer()
 	rec := httptest.NewRecorder()
 	srv.ServeHTTP(rec, s.authorizedRequest(http.MethodGet, "/v1/events/"+event.EventID.String()))
 
@@ -133,7 +148,7 @@ func (s *HandlerTestSuite) TestGetEvent_ValidTokenWithScope_Returns200() {
 func (s *HandlerTestSuite) TestGetEvent_MissingScope_Returns403() {
 	s.withScope("write:events")
 
-	srv := api.NewServer(testServerConfig(), s.reader, s.validator, noopMiddleware, health.NewChecker(time.Second))
+	srv := s.newTestServer()
 	rec := httptest.NewRecorder()
 	srv.ServeHTTP(rec, s.authorizedRequest(http.MethodGet, "/v1/events/some-id"))
 
@@ -144,7 +159,7 @@ func (s *HandlerTestSuite) TestGetEvent_NotFound_Returns404() {
 	s.withScope("read:events")
 	s.reader.WithGetError(ingestor.ErrEventNotFound)
 
-	srv := api.NewServer(testServerConfig(), s.reader, s.validator, noopMiddleware, health.NewChecker(time.Second))
+	srv := s.newTestServer()
 	rec := httptest.NewRecorder()
 	srv.ServeHTTP(rec, s.authorizedRequest(http.MethodGet, "/v1/events/missing-id"))
 
@@ -156,7 +171,7 @@ func (s *HandlerTestSuite) TestGetEvent_StorageError_Returns500() {
 	// A non-not-found error — should be 500, not 404
 	s.reader.WithGetError(errors.New("db timeout"))
 
-	srv := api.NewServer(testServerConfig(), s.reader, s.validator, noopMiddleware, health.NewChecker(time.Second))
+	srv := s.newTestServer()
 	rec := httptest.NewRecorder()
 	srv.ServeHTTP(rec, s.authorizedRequest(http.MethodGet, "/v1/events/some-id"))
 

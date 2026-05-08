@@ -22,18 +22,18 @@ func NewIngestorProcessor(logger *slog.Logger, processor ingestor.DataProcessor)
 func (il *IngestorProcessor) ProcessData(ctx context.Context) (*ingestor.DeviceMessage, error) {
 	msg, err := il.processor.ProcessData(ctx)
 	if err != nil {
-		il.logger.Error("failed to process message", "msg", msg, "error", err)
+		il.logger.ErrorContext(ctx, "failed to process message", "msg", msg, "error", err)
 
 		return nil, err
 	}
 
 	if msg == nil {
-		il.logger.Warn("msg received from processing is empty", "msg", msg)
+		il.logger.WarnContext(ctx, "msg received from processing is empty", "msg", msg)
 
 		return msg, nil
 	}
 
-	il.logger.Info("message processed",
+	il.logger.InfoContext(ctx, "message processed",
 		"device_id", msg.DeviceID,
 		"type", msg.Type,
 		"message", msg,

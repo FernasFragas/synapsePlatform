@@ -26,7 +26,7 @@ func NewHTTPHandlerLogger(logger *slog.Logger) api.Middleware {
 
 			next.ServeHTTP(rec, r)
 
-			logger.Info("http request",
+			logger.InfoContext(r.Context(), "http request",
 				"method", r.Method,
 				"path", r.URL.Path,
 				"status", rec.status,

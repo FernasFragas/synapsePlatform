@@ -33,7 +33,8 @@ func main() {
 		RedactKeys:    cfg.Log.RedactKeys,
 		MaxValueBytes: cfg.Log.MaxValueBytes,
 	})
-	logger := slog.New(safeHandler)
+	traceHandler := synnapLog.NewTraceHandler(safeHandler)
+	logger := slog.New(traceHandler)
 
 	providers, err := metrics.NewProviders(context.Background(), "synapse-platform", cfg.Tracing.Endpoint)
 	if err != nil {
@@ -133,8 +134,8 @@ func main() {
 		consumerProbe = synnapLog.NewHealthProbe(healthLogger, consumerProbe)
 		kafkaProbes = append(kafkaProbes, consumerProbe)
 
-		batchSize := 50                  // Optimal
-		batchTimeout := 500 * time.Millisecond  // Optimal
+		batchSize := 50                        // Optimal
+		batchTimeout := 500 * time.Millisecond // Optimal
 		workersNumber := 2
 
 		run := newIngestionPipeline(
@@ -164,6 +165,7 @@ func main() {
 		authenticator,
 		synnapLog.NewHTTPHandlerLogger(logger),
 		checker,
+		providers.Metrics,
 	)
 
 	logger.Info("system starting",

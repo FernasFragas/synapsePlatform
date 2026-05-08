@@ -31,16 +31,16 @@ func (mp *MessagePoller) PollMessage(ctx context.Context) (*ingestor.DeviceMessa
 			)
 		}
 
-		mp.logger.Error("failed to poll message", attrs...)
+		mp.logger.ErrorContext(ctx, "failed to poll message", attrs...)
 	}
 
 	if msg == nil {
-		mp.logger.Debug("no message available")
+		mp.logger.DebugContext(ctx, "no message available")
 
 		return nil, nil
 	}
 
-	mp.logger.Info("polled message",
+	mp.logger.InfoContext(ctx, "polled message",
 		"device_id", msg.DeviceID,
 		"type", msg.Type,
 		"timestamp", msg.Timestamp.String(),
@@ -53,12 +53,12 @@ func (mp *MessagePoller) PollMessage(ctx context.Context) (*ingestor.DeviceMessa
 func (mp *MessagePoller) Close(ctx context.Context) error {
 	err := mp.poller.Close(ctx)
 	if err != nil {
-		mp.logger.Error("failed to close connection", "error", err)
+		mp.logger.ErrorContext(ctx, "failed to close connection", "error", err)
 
 		return err
 	}
 
-	mp.logger.Info("closed connection")
+	mp.logger.InfoContext(ctx, "closed connection")
 
 	return nil
 }
