@@ -17,6 +17,9 @@ RUN CGO_ENABLED=0 GOOS=linux go build \
       -o bin/synapsePlatform \
       ./cmd/
 
+# in the builder stage
+RUN mkdir -p /app/data
+
 # ── Runtime stage ─────────────────────────────────────────────────────────────
 # distroless/static has no shell, no package manager, minimal attack surface.
 FROM gcr.io/distroless/static-debian12:nonroot
@@ -26,6 +29,8 @@ WORKDIR /app
 COPY --from=builder /app/bin/synapsePlatform .
 
 EXPOSE 8080
+
+COPY --from=builder --chown=nonroot:nonroot /app/data /app/data
 
 USER nonroot:nonroot
 
