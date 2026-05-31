@@ -24,3 +24,5 @@ bin/
 coverage.html
 
 s.txt
+
+.env
