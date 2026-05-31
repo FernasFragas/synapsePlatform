@@ -257,3 +257,25 @@ run-with-logs:
 	@echo "🚀 Starting application with log capture..."
 	@echo "📝 Logs will be saved to: performance-reports/app-logs-$$(date +%Y%m%d-%H%M%S).log"
 	@go run $(MAIN_PATH) > performance-reports/app-logs-$$(date +%Y%m%d-%H%M%S).log 2>&1
+
+## grafana-up: Start full stack with Grafana Cloud metrics
+grafana-up:
+	$(DOCKER_COMPOSE) --profile monitoring up -d --build
+
+## grafana-down: Stop full stack
+grafana-down:
+	$(DOCKER_COMPOSE) --profile monitoring down
+
+## infra-only: Start infra + Alloy for GoLand-run app (no synapse container)
+infra-only:
+	@echo "🚀 Starting infra (Kafka, Zookeeper) for GoLand..."
+	$(DOCKER_COMPOSE) up -d kafka zookeeper init-kafka
+	@echo "📡 Starting Alloy without its synapse dependency..."
+	$(DOCKER_COMPOSE) up -d --no-deps alloy
+	@echo "✅ Infra + Alloy up. Run the app from GoLand on :8080"
+
+## infra-down: Stop infra + Alloy
+infra-down:
+	@echo "🛑 Stopping infra + Alloy..."
+	$(DOCKER_COMPOSE) stop kafka zookeeper init-kafka alloy
+	@echo "✅ Stopped"
