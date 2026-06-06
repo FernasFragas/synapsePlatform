@@ -42,16 +42,6 @@ services:
       "
     restart: "no"
 
-  synapse:
-    build: .
-    ports:
-      - "8080:8080"
-    volumes:
-      - ./config-docker.yaml:/app/config.yaml:ro
-      - synapse-data:/app/data
-    depends_on:
-      - kafka
-
   alloy:
     image: grafana/alloy:latest
     ports:
@@ -67,5 +57,45 @@ services:
     depends_on:
       - synapse
 
+  ollama:
+    image: ollama/ollama:latest
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama-models:/root/.ollama
+    healthcheck:
+      test: [ "CMD", "ollama", "list" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  init-ollama:
+    image: ollama/ollama:latest
+    depends_on:
+      ollama:
+        condition: service_healthy
+    environment:
+      OLLAMA_HOST: "http://ollama:11434"
+    entrypoint: [ "/bin/sh", "-c" ]
+    command: >
+      "
+      ollama pull llama3.2:3b && --->Update model here for a better/small one for analitical analsis
+      echo 'Ollama model pulled successfully'
+      "
+    restart: "no"
+
+  synapse:
+    build: .
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./config-docker.yaml:/app/config.yaml:ro
+      - synapse-data:/app/data
+    depends_on:
+      - kafka
+      - ollama
+
 volumes:
   synapse-data:
+  ollama-models:

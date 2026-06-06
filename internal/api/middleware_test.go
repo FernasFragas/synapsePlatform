@@ -34,6 +34,7 @@ func (s *MiddlewareTestSuite) newTestServer() *api.Server {
 	return api.NewServer(
 		testServerConfig(),
 		s.reader,
+		nil,
 		s.validator,
 		noopMiddleware,
 		health.NewChecker(time.Second),
