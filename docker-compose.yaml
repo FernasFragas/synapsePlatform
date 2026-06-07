@@ -31,13 +31,9 @@ services:
     entrypoint: ['/bin/sh', '-c']
     command: >
       "
-      # Wait for Kafka to be ready
       sleep 20 &&
-      
-      # Create topics
-      kafka-topics --create --topic ingestion.raw --partitions 10 --replication-factor 1 --if-not-exists --bootstrap-server kafka:9092 &&  
+      kafka-topics --create --topic ingestion.raw --partitions 10 --replication-factor 1 --if-not-exists --bootstrap-server kafka:9092 &&
       kafka-topics --create --topic ingestion.dlq --partitions 3 --replication-factor 1 --if-not-exists --bootstrap-server kafka:9092 &&
-      
       echo 'Kafka topics created successfully'
       "
     restart: "no"
@@ -60,7 +56,7 @@ services:
   ollama:
     image: ollama/ollama:latest
     ports:
-      - "11434:11434"
+      - "11435:11434"
     volumes:
       - ollama-models:/root/.ollama
     healthcheck:
@@ -77,12 +73,20 @@ services:
         condition: service_healthy
     environment:
       OLLAMA_HOST: "http://ollama:11434"
+    volumes:
+      - ollama-models:/root/.ollama
     entrypoint: [ "/bin/sh", "-c" ]
-    command: >
-      "
-      ollama pull llama3.2:3b && --->Update model here for a better/small one for analitical analsis
-      echo 'Ollama model pulled successfully'
-      "
+    command:
+      - |
+        set -e
+        for i in 1 2 3; do
+          ollama list | grep -q 'llama3.2:1b' && echo "Model already present" && exit 0
+          ollama pull llama3.2:1b && echo "Pulled successfully" && exit 0
+          echo "Attempt $$i failed, retrying in 10s..."
+          sleep 10
+        done
+        echo "Failed after 3 attempts"
+        exit 1
     restart: "no"
 
   synapse:
@@ -93,8 +97,12 @@ services:
       - ./config-docker.yaml:/app/config.yaml:ro
       - synapse-data:/app/data
     depends_on:
-      - kafka
-      - ollama
+      kafka:
+        condition: service_started
+      ollama:
+        condition: service_healthy
+      init-ollama:
+        condition: service_completed_successfully
 
 volumes:
   synapse-data:

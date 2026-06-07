@@ -283,8 +283,8 @@ func (db *Repo) AggregateByDomain(ctx context.Context, since time.Time) ([]api.D
 			Domain:    r.Domain,
 			EventType: r.EventType,
 			Count:     r.Cnt,
-			FirstSeen: r.FirstSeen,
-			LastSeen:  r.LastSeen,
+			FirstSeen: toTime(r.FirstSeen),
+			LastSeen:  toTime(r.LastSeen),
 		}
 	}
 	return stats, nil
@@ -422,4 +422,21 @@ func clamp(v, min, max, fallback int) int {
 	}
 
 	return v
+}
+
+func toTime(v interface{}) time.Time {
+	if t, ok := v.(time.Time); ok {
+		return t
+	}
+	if s, ok := v.(string); ok {
+		if t, err := time.Parse(time.RFC3339, s); err == nil {
+			return t
+		}
+	}
+	if b, ok := v.([]byte); ok {
+		if t, err := time.Parse(time.RFC3339, string(b)); err == nil {
+			return t
+		}
+	}
+	return time.Time{}
 }

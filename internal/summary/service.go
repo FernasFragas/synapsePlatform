@@ -48,13 +48,19 @@ func (s *Service) Summarize(ctx context.Context, req api.Request) (*api.Report, 
 		}
 	}
 	if len(domainStats) == 0 {
-		return &api.Report{
+		report := &api.Report{
 			Domain:     req.Domain,
 			WindowFrom: req.Since,
 			Model:      s.model,
 			Content:    "No events found for the requested period.",
 			CreatedAt:  time.Now().UTC(),
-		}, nil
+		}
+		// Cache the empty result too, so repeated requests in the same window
+		// return a stable report instead of recomputing a fresh timestamp.
+		if err := s.reader.SaveSummary(ctx, report); err != nil {
+			return report, fmt.Errorf("save summary: %w", err)
+		}
+		return report, nil
 	}
 
 	// 3. Build prompt

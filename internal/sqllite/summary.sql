@@ -41,3 +41,14 @@ CREATE TABLE IF NOT EXISTS failed_messages (
 
 CREATE INDEX IF NOT EXISTS idx_failed_stage ON failed_messages(stage);
 CREATE INDEX IF NOT EXISTS idx_failed_created_at ON failed_messages(created_at);
+
+CREATE TABLE IF NOT EXISTS summaries (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    domain      TEXT NOT NULL,
+    window_from TIMESTAMP NOT NULL,
+    model       TEXT NOT NULL,
+    content     TEXT NOT NULL,
+    created_at  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_summaries_lookup ON summaries(domain, window_from, created_at DESC);

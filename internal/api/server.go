@@ -39,11 +39,11 @@ type Request struct {
 	Since  time.Time
 }
 type Report struct {
-	Domain     string
-	WindowFrom time.Time
-	Model      string
-	Content    string
-	CreatedAt  time.Time
+	Domain     string    `json:"domain"`
+	WindowFrom time.Time `json:"window_from"`
+	Model      string    `json:"model"`
+	Content    string    `json:"content"`
+	CreatedAt  time.Time `json:"created_at"`
 }
 type DomainStat struct {
 	Domain, EventType   string

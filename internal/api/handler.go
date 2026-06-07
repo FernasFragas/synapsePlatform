@@ -122,8 +122,10 @@ func (s *Server) handleGetSummary(w http.ResponseWriter, r *http.Request) {
 	}
 	domain := r.URL.Query().Get("domain")
 	sinceRaw := r.URL.Query().Get("since")
-	// Default to last 24 hours
-	since := time.Now().UTC().Add(-24 * time.Hour)
+	// Default to last 24 hours. Truncate to the hour so the value is stable
+	// across rapid repeated requests — otherwise window_from (the cache key)
+	// changes every call and the summary cache can never hit.
+	since := time.Now().UTC().Truncate(time.Hour).Add(-24 * time.Hour)
 	if sinceRaw != "" {
 		if parsed, err := time.Parse(time.RFC3339, sinceRaw); err == nil {
 			since = parsed

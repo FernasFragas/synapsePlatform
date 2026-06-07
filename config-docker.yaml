@@ -23,7 +23,7 @@ auth:
 
 kafka:
   brokers:
-    - "kafka:9092"
+    - "kafka:29092"
   group_id: "synapse-platform-consumer"
   topics:
     - "ingestion.raw"

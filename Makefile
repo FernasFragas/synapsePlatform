@@ -279,3 +279,32 @@ infra-down:
 	@echo "🛑 Stopping infra + Alloy..."
 	$(DOCKER_COMPOSE) stop kafka zookeeper init-kafka alloy
 	@echo "✅ Stopped"
+
+## e2e-test: Run end-to-end tests against Docker Compose stack
+## e2e-test: Full end-to-end test with model readiness check
+e2e-test:
+	@echo "🚀 Starting e2e test environment..."
+	docker compose down -v
+	docker compose up -d --build
+	@echo "⏳ Waiting for Ollama model (port 11435) — this takes ~90s on first pull..."
+	@for i in $$(seq 1 120); do \
+		if curl -s http://localhost:11435/api/tags | grep -q "llama3.2:1b"; then \
+			echo "✅ Model llama3.2:1b ready"; \
+			break; \
+		fi; \
+		if [ $$i -eq 120 ]; then \
+			echo "❌ Timeout: model never appeared after 10 minutes"; \
+			echo "init-ollama logs:"; \
+			docker compose logs init-ollama --tail 20; \
+			exit 1; \
+		fi; \
+		echo "   attempt $$i/120 — still waiting..."; \
+		sleep 5; \
+	done
+	@echo "⏳ Giving synapse a few seconds to finish startup..."
+	@sleep 5
+	JWT_SECRET="${JWT_SECRET:-your-256-bit-secret-replace-me!!}" \
+	E2E_API_URL=http://localhost:8080 \
+	E2E_OLLAMA_URL=http://localhost:11435 \
+	go test -v -timeout 300s -tags e2e ./test/e2e/...
+	docker compose down
