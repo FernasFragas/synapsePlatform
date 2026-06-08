@@ -108,7 +108,7 @@ jobs:
           echo "Coverage: ${total}%"
 
       - name: Enforce coverage threshold
-        if: matrix.go-version == '1.25.x'
+        if: matrix.go-version == '1.26.x'
         run: |
           total="${{ steps.coverage.outputs.total_integer }}"
           if [ "$total" -lt "${{ env.COVERAGE_THRESHOLD }}" ]; then
@@ -117,14 +117,14 @@ jobs:
           fi
           echo "Coverage ${total}% meets the threshold of ${{ env.COVERAGE_THRESHOLD }}%"
       - name: Comment coverage on PR
-        if: github.event_name == 'pull_request' && matrix.go-version == '1.25.x'
+        if: github.event_name == 'pull_request' && matrix.go-version == '1.26.x'
         uses: marocchino/sticky-pull-request-comment@v2
         with:
           message: |
             ## Code Coverage Report
             Coverage: **${{ steps.coverage.outputs.total }}%** (threshold: ${{ env.COVERAGE_THRESHOLD }}%)
       - name: Upload coverage to Codecov
-        if: matrix.go-version == '1.25.x'
+        if: matrix.go-version == '1.26.x'
         uses: codecov/codecov-action@v4
         with:
           files: ./coverage.out
