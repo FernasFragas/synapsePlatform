@@ -8,13 +8,26 @@ services:
       ZOOKEEPER_TICK_TIME: 2000
     ports:
       - "2181:2181"
+    healthcheck:
+      test: ["CMD-SHELL", "echo ruok | timeout 2 bash -c 'cat > /dev/tcp/localhost/2181'"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
 
   kafka:
     image: confluentinc/cp-kafka:7.4.0
     depends_on:
-      - zookeeper
+      zookeeper:
+        condition: service_healthy
     ports:
       - "9092:9092"
+    healthcheck:
+      test: [ "CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:9092" ]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 15s
     environment:
       KAFKA_BROKER_ID: 1
       KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
@@ -27,11 +40,11 @@ services:
   init-kafka:
     image: confluentinc/cp-kafka:7.4.0
     depends_on:
-      - kafka
+      kafka:
+        condition: service_healthy
     entrypoint: ['/bin/sh', '-c']
     command: >
       "
-      sleep 20 &&
       kafka-topics --create --topic ingestion.raw --partitions 10 --replication-factor 1 --if-not-exists --bootstrap-server kafka:9092 &&
       kafka-topics --create --topic ingestion.dlq --partitions 3 --replication-factor 1 --if-not-exists --bootstrap-server kafka:9092 &&
       echo 'Kafka topics created successfully'
@@ -80,8 +93,8 @@ services:
       - |
         set -e
         for i in 1 2 3; do
-          ollama list | grep -q 'llama3.2:1b' && echo "Model already present" && exit 0
-          ollama pull llama3.2:1b && echo "Pulled successfully" && exit 0
+          ollama list | grep -q 'mistral:7b' && echo "Model already present" && exit 0
+          ollama pull mistral:7b && echo "Pulled successfully" && exit 0
           echo "Attempt $$i failed, retrying in 10s..."
           sleep 10
         done

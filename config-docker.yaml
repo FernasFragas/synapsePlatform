@@ -34,7 +34,7 @@ kafka:
 llm:
   enabled: true
   host: "http://ollama:11434"
-  model: "llama3.2:3b"
+  model: "mistral:7b"
   timeout: 60s
   max_tokens: 512
   temperature: 0.2

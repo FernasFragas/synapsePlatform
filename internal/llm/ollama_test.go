@@ -22,7 +22,7 @@ func TestClientComplete(t *testing.T) {
 
 		var req generateRequest
 		require.NoError(t, json.NewDecoder(r.Body).Decode(&req))
-		assert.Equal(t, "llama3.2:3b", req.Model)
+		assert.Equal(t, "mistral:7b", req.Model)
 		assert.Equal(t, wantPrompt, req.Prompt)
 		assert.False(t, req.Stream)
 
@@ -30,7 +30,7 @@ func TestClientComplete(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	client := NewOllamaClient(srv.URL, "llama3.2:3b", 0.2, 512, 30*time.Second)
+	client := NewOllamaClient(srv.URL, "mistral:7b", 0.2, 512, 30*time.Second)
 	got, err := client.Complete(context.Background(), wantPrompt)
 	require.NoError(t, err)
 	assert.Equal(t, wantResponse, got)

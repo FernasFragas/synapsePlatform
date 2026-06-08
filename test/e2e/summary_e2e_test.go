@@ -39,7 +39,7 @@ func TestEndToEnd_SummaryFlow(t *testing.T) {
 	waitForEvents(t, apiBase, token)
 
 	// 3. Call /v1/summary
-	req, err := http.NewRequest(http.MethodGet, apiBase+"/v1/summary?domain=energy", nil)
+	req, err := http.NewRequest(http.MethodGet, apiBase+"/v1/summary?domain=energy&since=2024-01-01T00:00:00Z", nil)
 	require.NoError(t, err)
 	req.Header.Set("Authorization", "Bearer "+token)
 
@@ -86,7 +86,7 @@ func waitForOllamaModel(t *testing.T, base string) {
 	t.Helper()
 	client := &http.Client{Timeout: 5 * time.Second}
 
-	targetModel := "llama3.2:1b"
+	targetModel := "mistral:7b"
 
 	for i := 0; i < 60; i++ {
 		resp, err := client.Get(base + "/api/tags")
@@ -212,7 +212,7 @@ func minifyJSON(data []byte) ([]byte, error) {
 func waitForEvents(t *testing.T, apiBase, token string) {
 	t.Helper()
 	client := &http.Client{Timeout: 10 * time.Second}
-	req, _ := http.NewRequest(http.MethodGet, apiBase+"/v1/events?limit=1", nil)
+	req, _ := http.NewRequest(http.MethodGet, apiBase+"/v1/events", nil)
 	req.Header.Set("Authorization", "Bearer "+token)
 
 	for i := 0; i < 180; i++ { // 180 seconds max
@@ -235,7 +235,7 @@ func waitForEvents(t *testing.T, apiBase, token string) {
 		var body struct {
 			Data []any `json:"data"`
 		}
-		if json.Unmarshal(bodyBytes, &body) == nil && len(body.Data) > 0 {
+		if json.Unmarshal(bodyBytes, &body) == nil && len(body.Data) >= 3 {
 			t.Logf("Events appeared after %d seconds: %d items", i, len(body.Data))
 			return
 		}

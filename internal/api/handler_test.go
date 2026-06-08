@@ -201,7 +201,7 @@ func (s *HandlerTestSuite) TestGetSummary_ValidTokenWithScope_Returns200() {
 	report := &api.Report{
 		Domain:     "energy",
 		WindowFrom: time.Now().UTC().Add(-24 * time.Hour),
-		Model:      "llama3.2:3b",
+		Model:      "mistral:7b",
 		Content:    "There were 42 energy events.",
 		CreatedAt:  time.Now().UTC(),
 	}
@@ -217,7 +217,7 @@ func (s *HandlerTestSuite) TestGetSummary_ValidTokenWithScope_Returns200() {
 	var body map[string]any
 	s.Require().NoError(json.NewDecoder(rec.Body).Decode(&body))
 	s.Equal("energy", body["domain"])
-	s.Equal("llama3.2:3b", body["model"])
+	s.Equal("mistral:7b", body["model"])
 	s.Equal("There were 42 energy events.", body["content"])
 }
 

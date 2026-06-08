@@ -19,6 +19,14 @@ const (
 	SchemaVersion1 = "1.0.0" // currently only one
 )
 
+type Domains string
+
+const (
+	EnergyDomain  Domains = "energy"
+	FinanceDomain Domains = "finance"
+	UnknownDomain Domains = "unknown"
+)
+
 // DataTypes represents different types of device data.
 type DataTypes string
 
@@ -35,6 +43,19 @@ const (
 	DataTypeBattery             DataTypes = "battery"
 	DataTypeUnknown             DataTypes = "unknown"
 )
+
+func (d Domains) String() string {
+	return string(d)
+}
+
+func (d Domains) IsValid() bool {
+	switch d {
+	case EnergyDomain, FinanceDomain:
+		return true
+	default:
+		return false
+	}
+}
 
 // AllDataTypes returns all valid data types.
 func AllDataTypes() []DataTypes {
@@ -82,6 +103,30 @@ func ParseDataType(s string) DataTypes {
 	}
 
 	return DataTypeUnknown
+}
+
+// ParseDomainType converts a string to Domains
+func ParseDomainType(s string) Domains {
+	dt := ParseDataType(s)
+
+	if domain, ok := typeToDomain[dt]; ok {
+		return domain
+	}
+
+	return UnknownDomain
+}
+
+var typeToDomain = map[DataTypes]Domains{
+	DataTypeEnvironmentalSensor: EnergyDomain,
+	DataTypeClimateSensor:       EnergyDomain,
+	DataTypeEVCharger:           EnergyDomain,
+	DataTypeGridMeter:           EnergyDomain,
+	DataTypeEnergyMeter:         EnergyDomain,
+	DataTypeSolarPanel:          EnergyDomain,
+	DataTypeBattery:             EnergyDomain,
+	DataTypeFinancialStream:     FinanceDomain,
+	DataTypeMotionSensor:        EnergyDomain,
+	DataTypeUnknown:             UnknownDomain,
 }
 
 type PageRequest struct {

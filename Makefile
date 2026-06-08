@@ -288,8 +288,8 @@ e2e-test:
 	docker compose up -d --build
 	@echo "⏳ Waiting for Ollama model (port 11435) — this takes ~90s on first pull..."
 	@for i in $$(seq 1 120); do \
-		if curl -s http://localhost:11435/api/tags | grep -q "llama3.2:1b"; then \
-			echo "✅ Model llama3.2:1b ready"; \
+		if curl -s http://localhost:11435/api/tags | grep -q "mistral:7b"; then \
+			echo "✅ Model mistral:7b ready"; \
 			break; \
 		fi; \
 		if [ $$i -eq 120 ]; then \
