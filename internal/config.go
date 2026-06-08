@@ -15,6 +15,16 @@ type Config struct {
 	Database DatabaseConfig `yaml:"database"`
 	Tracing  TracingConfig  `yaml:"tracing"`
 	Log      LogConfig      `yaml:"log"`
+	LLM      LLMConfig      `yaml:"llm"`
+}
+
+type LLMConfig struct {
+	Enabled     bool          `yaml:"enabled"`
+	Host        string        `yaml:"host"`
+	Model       string        `yaml:"model"`
+	Timeout     time.Duration `yaml:"timeout"`
+	MaxTokens   int           `yaml:"max_tokens"`
+	Temperature float64       `yaml:"temperature"`
 }
 
 func LoadConfig(path string) (Config, error) {

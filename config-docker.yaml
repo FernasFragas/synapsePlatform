@@ -23,13 +23,21 @@ auth:
 
 kafka:
   brokers:
-    - "kafka:9092"
+    - "kafka:29092"
   group_id: "synapse-platform-consumer"
   topics:
     - "ingestion.raw"
   dlq_topic: "ingestion.dlq"
   min_bytes: 100000
   max_bytes: 100000000
+
+llm:
+  enabled: true
+  host: "http://ollama:11434"
+  model: "mistral:7b"
+  timeout: 60s
+  max_tokens: 512
+  temperature: 0.2
 
 database:
   path: "data/data.db"

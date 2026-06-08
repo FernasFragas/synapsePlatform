@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"synapsePlatform/internal/api"
 	"time"
 
 	"synapsePlatform/internal/ingestor"
@@ -270,6 +271,55 @@ func (db *Repo) StoreFailure(ctx context.Context, failed ingestor.FailedMessage)
 	return err
 }
 
+func (db *Repo) AggregateByDomain(ctx context.Context, since time.Time) ([]api.DomainStat, error) {
+	rows, err := db.Queries.SummarizeByDomain(ctx, since)
+	if err != nil {
+		return nil, fmt.Errorf("summarize by domain: %w", err)
+	}
+
+	stats := make([]api.DomainStat, len(rows))
+	for i, r := range rows {
+		stats[i] = api.DomainStat{
+			Domain:    r.Domain,
+			EventType: r.EventType,
+			Count:     r.Cnt,
+			FirstSeen: toTime(r.FirstSeen),
+			LastSeen:  toTime(r.LastSeen),
+		}
+	}
+	return stats, nil
+}
+
+func (db *Repo) LatestSummary(ctx context.Context, domain string, since time.Time) (*api.Report, bool, error) {
+	// You need a sqlc query first; placeholder using raw SQL until then:
+	row := db.Db.QueryRowContext(ctx,
+		`SELECT domain, window_from, model, content, created_at
+		 FROM summaries
+		 WHERE domain = ? AND window_from = ?
+		 ORDER BY created_at DESC LIMIT 1`,
+		domain, since,
+	)
+
+	var r api.Report
+	err := row.Scan(&r.Domain, &r.WindowFrom, &r.Model, &r.Content, &r.CreatedAt)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, false, nil
+		}
+		return nil, false, err
+	}
+	return &r, true, nil
+}
+
+func (db *Repo) SaveSummary(ctx context.Context, r *api.Report) error {
+	_, err := db.Db.ExecContext(ctx,
+		`INSERT INTO summaries (domain, window_from, model, content, created_at)
+		 VALUES (?, ?, ?, ?, ?)`,
+		r.Domain, r.WindowFrom, r.Model, r.Content, r.CreatedAt,
+	)
+	return err
+}
+
 func (db *Repo) Close() error {
 	return db.Db.Close()
 }
@@ -372,4 +422,21 @@ func clamp(v, min, max, fallback int) int {
 	}
 
 	return v
+}
+
+func toTime(v interface{}) time.Time {
+	if t, ok := v.(time.Time); ok {
+		return t
+	}
+	if s, ok := v.(string); ok {
+		if t, err := time.Parse(time.RFC3339, s); err == nil {
+			return t
+		}
+	}
+	if b, ok := v.([]byte); ok {
+		if t, err := time.Parse(time.RFC3339, string(b)); err == nil {
+			return t
+		}
+	}
+	return time.Time{}
 }

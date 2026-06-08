@@ -170,7 +170,7 @@ func (i *Ingestor) ingestWithWorkerPool(ctx context.Context) error {
 		g.Go(func() error {
 			defer workersWg.Done()
 
-			return i.transform(ctx, msgCh, eventCh,workerID)
+			return i.transform(ctx, msgCh, eventCh, workerID)
 		})
 	}
 
@@ -309,6 +309,7 @@ func (i *Ingestor) saveBatch(ctx context.Context, ticker *time.Ticker, eventCh <
 		select {
 		case <-ctx.Done():
 			_ = i.storeBatch(ctx, batch, ticker)
+			batch = batch[:0]
 
 			return nil
 
@@ -318,6 +319,7 @@ func (i *Ingestor) saveBatch(ctx context.Context, ticker *time.Ticker, eventCh <
 
 				continue
 			}
+			batch = batch[:0]
 
 		case event, ok := <-eventCh:
 			if !ok {

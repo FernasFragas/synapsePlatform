@@ -73,6 +73,21 @@ func init() {
 		Source:     DataTypeEnvironmentalSensor.String(),
 		NewPayload: func() NormalizedData { return &EnvironmentalSensor{} },
 	})
+	RegisterDomain(DataTypeClimateSensor, DomainDescriptor{
+		EntityType: EntityTypeSensor,
+		Source:     DataTypeClimateSensor.String(),
+		NewPayload: func() NormalizedData { return &EnvironmentalSensor{} },
+	})
+	RegisterDomain(DataTypeEVCharger, DomainDescriptor{
+		EntityType: EntityTypeDevice,
+		Source:     DataTypeEVCharger.String(),
+		NewPayload: func() NormalizedData { return &EnergyReading{} },
+	})
+	RegisterDomain(DataTypeGridMeter, DomainDescriptor{
+		EntityType: EntityTypeSensor,
+		Source:     DataTypeGridMeter.String(),
+		NewPayload: func() NormalizedData { return &EnergyReading{} },
+	})
 	RegisterDomain(DataTypeUnknown, DomainDescriptor{
 		EntityType: EntityTypeUnknown,
 		Source:     DataTypeUnknown.String(),

@@ -22,6 +22,7 @@ const (
 	ErrFailedToGetEvent       ErrorOccurredBecauseOf = "failed to get event"
 	ErrFailedToListEvents     ErrorOccurredBecauseOf = "failed to list events"
 	ErrFailedToEncodeResponse ErrorOccurredBecauseOf = "failed to encode response"
+	ErrFailedToSummarize      ErrorOccurredBecauseOf = "failed to summarize"
 )
 
 // RequestError provides structured error information for API failures.

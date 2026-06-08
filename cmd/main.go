@@ -12,9 +12,11 @@ import (
 	"synapsePlatform/internal/health"
 	"synapsePlatform/internal/ingestor"
 	"synapsePlatform/internal/kafka"
+	"synapsePlatform/internal/llm"
 	synnapLog "synapsePlatform/internal/log"
 	"synapsePlatform/internal/metrics"
 	"synapsePlatform/internal/sqllite"
+	"synapsePlatform/internal/summary"
 	"syscall"
 	"time"
 
@@ -159,9 +161,31 @@ func main() {
 	allProbes := append([]health.Probe{dbProbe}, kafkaProbes...)
 	checker := health.NewChecker(2*time.Second, allProbes...)
 
+	var summarizer api.Summarizer
+	if cfg.LLM.Enabled {
+		llmClient := llm.NewOllamaClient(
+			cfg.LLM.Host,
+			cfg.LLM.Model,
+			cfg.LLM.Temperature,
+			cfg.LLM.MaxTokens,
+			cfg.LLM.Timeout,
+		)
+
+		summarizer = summary.New(db, llmClient, cfg.LLM.Model)
+		summarizer = synnapLog.NewSummarizer(logger, summarizer)
+
+		var err error
+		summarizer, err = metrics.NewSummarizer(meter, tracer, summarizer)
+		if err != nil {
+			logger.Error("failed to build metrics summarizer", "error", err)
+			os.Exit(1)
+		}
+	}
+
 	apiServer := api.NewServer(
 		cfg.Server,
 		metricsEventReader,
+		summarizer,
 		authenticator,
 		synnapLog.NewHTTPHandlerLogger(logger),
 		checker,

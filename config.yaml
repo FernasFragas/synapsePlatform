@@ -33,6 +33,14 @@ kafka:
   min_bytes: 100000      # 10KB
   max_bytes: 100000000   # 100MB
 
+llm:
+  enabled: true
+  host: "http://localhost:11434"
+  model: "mistral:7b"
+  timeout: 60s
+  max_tokens: 512
+  temperature: 0.2
+
 database:
   path: "data.db"
 
