@@ -3,6 +3,7 @@ package ingestor
 import (
 	"context"
 	"fmt"
+	"time"
 )
 
 type FallbackFailureStorer struct {
@@ -11,9 +12,17 @@ type FallbackFailureStorer struct {
 }
 
 type FailedMessage struct {
-	Stage   string
-	Message *DeviceMessage
-	Err     error
+	ID            string // unique ID for DLQ lookup
+	OriginalTopic string // e.g., "ingestion.raw"
+	Partition     int    // Kafka partition
+	Offset        int64  // Kafka offset
+	Stage         string // "process", "transform", "store"
+	ErrorType     string // "transient", "terminal", "poison"
+	ErrorMessage  string
+	RetryCount    int // how many times retried
+	Message       *DeviceMessage
+	Headers       map[string]string // original Kafka headers
+	Timestamp     time.Time         // when failure occurred
 }
 
 func NewFallbackFailureStorer(primary, secondary FailureStorer) *FallbackFailureStorer {

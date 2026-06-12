@@ -80,13 +80,13 @@ func NewIngestorProcessor(meter metric.Meter, tracer trace.Tracer, processor ing
 	}, nil
 }
 
-func (m *IngestorProcessor) ProcessData(ctx context.Context) (*ingestor.DeviceMessage, error) {
+func (m *IngestorProcessor) ProcessData(ctx context.Context) (*ingestor.DeviceMessage, ingestor.AckHandler, error) {
 	ctx, span := m.tracer.Start(ctx, "ingestor.process_data")
 	defer span.End()
 
 	start := time.Now()
 
-	msg, err := m.processor.ProcessData(ctx)
+	msg, ack, err := m.processor.ProcessData(ctx)
 
 	elapsed := time.Since(start).Seconds()
 
@@ -107,7 +107,7 @@ func (m *IngestorProcessor) ProcessData(ctx context.Context) (*ingestor.DeviceMe
 			attribute.String(AttrStatus, StatusError),
 		))
 
-		return nil, err
+		return nil, ack, err
 	}
 
 	if msg != nil {
@@ -126,5 +126,5 @@ func (m *IngestorProcessor) ProcessData(ctx context.Context) (*ingestor.DeviceMe
 		attribute.String(AttrStatus, StatusSuccess),
 	))
 
-	return msg, nil
+	return msg, ack, nil
 }

@@ -12,14 +12,14 @@ import (
 )
 
 type MessagePoller struct {
-	poller       ingestor.MessagePoller
-	tracer       trace.Tracer
-	duration     metric.Float64Histogram
-	total        metric.Int64Counter
-	errors       metric.Int64Counter
-	ackDuration  metric.Float64Histogram
-	ackTotal     metric.Int64Counter
-	ackErrors    metric.Int64Counter
+	poller      ingestor.MessagePoller
+	tracer      trace.Tracer
+	duration    metric.Float64Histogram
+	total       metric.Int64Counter
+	errors      metric.Int64Counter
+	ackDuration metric.Float64Histogram
+	ackTotal    metric.Int64Counter
+	ackErrors   metric.Int64Counter
 }
 
 func NewMessagePoller(meter metric.Meter, tracer trace.Tracer, poller ingestor.MessagePoller) (*MessagePoller, error) {
@@ -79,13 +79,13 @@ func NewMessagePoller(meter metric.Meter, tracer trace.Tracer, poller ingestor.M
 	}, nil
 }
 
-func (m *MessagePoller) PollMessage(ctx context.Context) (*ingestor.DeviceMessage, error) {
+func (m *MessagePoller) PollMessage(ctx context.Context) (*ingestor.DeviceMessage, ingestor.AckHandler, error) {
 	ctx, span := m.tracer.Start(ctx, "poller.poll_message")
 	defer span.End()
 
 	start := time.Now()
 
-	msg, err := m.poller.PollMessage(ctx)
+	msg, ack, err := m.poller.PollMessage(ctx)
 
 	elapsed := time.Since(start).Seconds()
 
@@ -97,7 +97,7 @@ func (m *MessagePoller) PollMessage(ctx context.Context) (*ingestor.DeviceMessag
 		m.total.Add(ctx, 1, metric.WithAttributes(op, attribute.String(AttrStatus, StatusError)))
 		m.duration.Record(ctx, elapsed, metric.WithAttributes(op, attribute.String(AttrStatus, StatusError)))
 
-		return msg, err
+		return msg, ack, err
 	}
 
 	attrs := []attribute.KeyValue{op, attribute.String(AttrStatus, StatusSuccess)}
@@ -112,7 +112,7 @@ func (m *MessagePoller) PollMessage(ctx context.Context) (*ingestor.DeviceMessag
 	m.total.Add(ctx, 1, metric.WithAttributes(attrs...))
 	m.duration.Record(ctx, elapsed, metric.WithAttributes(op, attribute.String(AttrStatus, StatusSuccess)))
 
-	return msg, nil
+	return msg, ack, nil
 }
 
 func (m *MessagePoller) Close(ctx context.Context) error {

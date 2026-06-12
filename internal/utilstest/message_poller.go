@@ -25,21 +25,28 @@ func NewMessagePoller(t *testing.T) *MessagePoller {
 
 // WithError sets the mock to return an error.
 func (r *MessagePoller) WithError(err error) *MessagePoller {
-	r.MockMessagePoller.EXPECT().PollMessage(gomock.Any()).Return(nil, err)
+	r.MockMessagePoller.EXPECT().PollMessage(gomock.Any()).Return(nil, ingestor.AckHandler(nil), err)
 
 	return r
 }
 
 // WithNoResult sets the mock to return no results.
 func (r *MessagePoller) WithNoResult() *MessagePoller {
-	r.MockMessagePoller.EXPECT().PollMessage(gomock.Any()).Return(nil, nil)
+	r.MockMessagePoller.EXPECT().PollMessage(gomock.Any()).Return(nil, ingestor.AckHandler(nil), nil)
 
 	return r
 }
 
 // WithResult sets the mock to return the given messages.
 func (r *MessagePoller) WithResult(messages *ingestor.DeviceMessage) *MessagePoller {
-	r.MockMessagePoller.EXPECT().PollMessage(gomock.Any()).Return(messages, nil)
+	r.MockMessagePoller.EXPECT().PollMessage(gomock.Any()).Return(messages, ingestor.AckHandler(nil), nil)
+
+	return r
+}
+
+// WithResultAndAck sets the mock to return the given message with a specific ack handler.
+func (r *MessagePoller) WithResultAndAck(messages *ingestor.DeviceMessage, ack ingestor.AckHandler) *MessagePoller {
+	r.MockMessagePoller.EXPECT().PollMessage(gomock.Any()).Return(messages, ack, nil)
 
 	return r
 }

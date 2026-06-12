@@ -40,7 +40,7 @@ func (s *ProcessorTestSuite) TestProcessData_ValidMessage_ReturnsMessage() {
 	}
 	s.poller.WithResult(msg)
 
-	result, err := s.subject.ProcessData(context.Background())
+	result, _, err := s.subject.ProcessData(context.Background())
 
 	s.Require().NoError(err, "valid message should not produce an error")
 	s.Equal(msg, result, "returned message should be the one from the poller")
@@ -50,7 +50,7 @@ func (s *ProcessorTestSuite) TestProcessData_PollerError_ReturnsProcessorError()
 	pollerErr := errors.New("broker unavailable")
 	s.poller.WithError(pollerErr)
 
-	result, err := s.subject.ProcessData(context.Background())
+	result, _, err := s.subject.ProcessData(context.Background())
 
 	s.Nil(result, "result should be nil when poller fails")
 	s.Require().Error(err, "poller error should be propagated")
@@ -66,7 +66,7 @@ func (s *ProcessorTestSuite) TestProcessData_PollerError_ReturnsProcessorError()
 func (s *ProcessorTestSuite) TestProcessData_PollerContextCancelled_ReturnsProcessorError() {
 	s.poller.WithError(context.Canceled)
 
-	result, err := s.subject.ProcessData(context.Background())
+	result, _, err := s.subject.ProcessData(context.Background())
 
 	s.Nil(result, "result should be nil on context cancellation")
 	s.Require().Error(err, "cancelled context error should be propagated")
@@ -80,7 +80,7 @@ func (s *ProcessorTestSuite) TestProcessData_PollerContextCancelled_ReturnsProce
 func (s *ProcessorTestSuite) TestProcessData_NilMessage_ReturnsProcessorError() {
 	s.poller.WithNoResult()
 
-	result, err := s.subject.ProcessData(context.Background())
+	result, _, err := s.subject.ProcessData(context.Background())
 
 	s.Nil(result, "result should be nil when poller returns nil message")
 	s.Require().Error(err, "nil message should produce an error")
@@ -99,7 +99,7 @@ func (s *ProcessorTestSuite) TestProcessData_MissingDeviceID_ReturnsValidationEr
 		Timestamp: time.Now(),
 	})
 
-	result, err := s.subject.ProcessData(context.Background())
+	result, _, err := s.subject.ProcessData(context.Background())
 
 	s.Nil(result, "result should be nil when validation fails")
 	s.Require().Error(err, "missing DeviceID should produce a validation error")
@@ -118,7 +118,7 @@ func (s *ProcessorTestSuite) TestProcessData_MissingType_ReturnsValidationError(
 		Timestamp: time.Now(),
 	})
 
-	result, err := s.subject.ProcessData(context.Background())
+	result, _, err := s.subject.ProcessData(context.Background())
 
 	s.Nil(result)
 	var procErr ingestor.ProcessorError
@@ -134,7 +134,7 @@ func (s *ProcessorTestSuite) TestProcessData_MissingTimestamp_ReturnsValidationE
 		Timestamp: time.Time{},
 	})
 
-	result, err := s.subject.ProcessData(context.Background())
+	result, _, err := s.subject.ProcessData(context.Background())
 
 	s.Nil(result)
 	var procErr ingestor.ProcessorError

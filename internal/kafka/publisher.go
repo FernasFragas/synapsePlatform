@@ -4,7 +4,9 @@ package kafka
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"synapsePlatform/internal/ingestor"
+	"time"
 
 	"github.com/segmentio/kafka-go"
 )
@@ -30,7 +32,7 @@ func (k *KafkaDLQ) StoreFailure(ctx context.Context, failed ingestor.FailedMessa
 	}{
 		Stage:   failed.Stage,
 		Message: failed.Message,
-		Error:   failed.Err.Error(),
+		Error:   failed.ErrorMessage,
 	})
 	if err != nil {
 		return err
@@ -39,6 +41,15 @@ func (k *KafkaDLQ) StoreFailure(ctx context.Context, failed ingestor.FailedMessa
 	return k.writer.WriteMessages(ctx, kafka.Message{
 		Key:   []byte(failed.Stage),
 		Value: payload,
+		Headers: []kafka.Header{
+			{Key: "X-Original-Topic", Value: []byte(failed.OriginalTopic)},
+			{Key: "X-Original-Partition", Value: []byte(fmt.Sprintf("%d", failed.Partition))},
+			{Key: "X-Original-Offset", Value: []byte(fmt.Sprintf("%d", failed.Offset))},
+			{Key: "X-Error-Type", Value: []byte(failed.ErrorType)},
+			{Key: "X-Stage", Value: []byte(failed.Stage)},
+			{Key: "X-Retry-Count", Value: []byte(fmt.Sprintf("%d", failed.RetryCount))},
+			{Key: "X-Failed-At", Value: []byte(failed.Timestamp.Format(time.RFC3339))},
+		},
 	})
 }
 

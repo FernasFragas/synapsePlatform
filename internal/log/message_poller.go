@@ -19,9 +19,9 @@ func NewMessagePoller(log *slog.Logger, poller ingestor.MessagePoller) *MessageP
 }
 
 // PollMessage logs the consuming messages, calling handler for each.
-func (mp *MessagePoller) PollMessage(ctx context.Context) (*ingestor.DeviceMessage, error) {
-	msg, err := mp.poller.PollMessage(ctx)
-	if err != nil || msg == nil {
+func (mp *MessagePoller) PollMessage(ctx context.Context) (*ingestor.DeviceMessage, ingestor.AckHandler, error) {
+	msg, ack, err := mp.poller.PollMessage(ctx)
+	if err != nil {
 		attrs := []any{"error", err}
 		if msg != nil {
 			attrs = append(attrs,
@@ -32,12 +32,13 @@ func (mp *MessagePoller) PollMessage(ctx context.Context) (*ingestor.DeviceMessa
 		}
 
 		mp.logger.ErrorContext(ctx, "failed to poll message", attrs...)
-	}
 
+		return msg, ack, err
+	}
 	if msg == nil {
 		mp.logger.DebugContext(ctx, "no message available")
 
-		return nil, nil
+		return nil, ack, nil
 	}
 
 	mp.logger.InfoContext(ctx, "polled message",
@@ -46,7 +47,7 @@ func (mp *MessagePoller) PollMessage(ctx context.Context) (*ingestor.DeviceMessa
 		"timestamp", msg.Timestamp.String(),
 	)
 
-	return msg, nil
+	return msg, ack, nil
 }
 
 // Close logs gracefully shuts down the consumer.

@@ -132,6 +132,15 @@ func main() {
 		consumer := kafka.NewConsumer(kafkaConfig, topic, 2*time.Minute)
 		consumers = append(consumers, consumer)
 
+		statsCollector, err := kafka.NewStatsCollector(consumer, meter)
+		if err != nil {
+			logger.Error("failed to build kafka stats collector", "error", err)
+
+			os.Exit(1)
+		}
+		// Run it in the same errgroup as the pipeline, so it shuts down together.
+		g.Go(func() error { return statsCollector.Run(ctx) })
+
 		var consumerProbe health.Probe = consumer
 		consumerProbe = synnapLog.NewHealthProbe(healthLogger, consumerProbe)
 		kafkaProbes = append(kafkaProbes, consumerProbe)
@@ -140,7 +149,7 @@ func main() {
 		batchTimeout := 500 * time.Millisecond // Optimal
 		workersNumber := 2
 
-		run := newIngestionPipeline(
+		run, err := newIngestionPipeline(
 			logger,
 			meter,
 			tracer,
@@ -153,6 +162,11 @@ func main() {
 			batchTimeout,
 			workersNumber,
 		)
+		if err != nil {
+			logger.Error("failed to build Ingestion pipeline", "error", err)
+
+			os.Exit(1)
+		}
 
 		g.Go(func() error { return run(ctx) })
 	}

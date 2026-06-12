@@ -21,17 +21,24 @@ func (f *Publisher) StoreFailure(ctx context.Context, failed ingestor.FailedMess
 	if err != nil {
 		f.logger.ErrorContext(ctx, "failed to store failure",
 			"stage", failed.Stage,
+			"error_type", failed.ErrorType,
 			"message", failed.Message,
-			"cause", failed.Err,
+			"error_message", failed.ErrorMessage,
 			"error", err,
 		)
+
 		return err
 	}
 
 	f.logger.WarnContext(ctx, "failure stored",
 		"stage", failed.Stage,
+		"error_type", failed.ErrorType,
 		"message", failed.Message,
-		"cause", failed.Err,
+		"error_message", failed.ErrorMessage,
+		"retry_count", failed.RetryCount,
+		"original_topic", failed.OriginalTopic,
+		"partition", failed.Partition,
+		"offset", failed.Offset,
 	)
 
 	return nil

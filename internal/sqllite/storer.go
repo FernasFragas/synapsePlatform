@@ -259,8 +259,8 @@ func (db *Repo) StoreFailure(ctx context.Context, failed ingestor.FailedMessage)
 	}
 
 	var errText string
-	if failed.Err != nil {
-		errText = failed.Err.Error()
+	if failed.Message != nil {
+		errText = failed.ErrorMessage
 	}
 
 	_, err := db.Db.ExecContext(ctx,

@@ -2,7 +2,6 @@ package sqllite_test
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"synapsePlatform/internal/ingestor"
 	"synapsePlatform/internal/sqllite"
@@ -155,9 +154,9 @@ func (s *StorerTestSuite) TestStoreFailure_WithMessage_Persists() {
 	}
 
 	err := s.repo.StoreFailure(s.ctx, ingestor.FailedMessage{
-		Stage:   "transform",
-		Message: msg,
-		Err:     errors.New("schema mismatch"),
+		Stage:        "transform",
+		Message:      msg,
+		ErrorMessage: "schema mismatch",
 	})
 	s.Require().NoError(err)
 
@@ -171,8 +170,8 @@ func (s *StorerTestSuite) TestStoreFailure_WithMessage_Persists() {
 
 func (s *StorerTestSuite) TestStoreFailure_NilMessage_DoesNotPanic() {
 	err := s.repo.StoreFailure(s.ctx, ingestor.FailedMessage{
-		Stage: "process",
-		Err:   errors.New("broker down"),
+		Stage:        "process",
+		ErrorMessage: "broker down",
 	})
 	s.NoError(err)
 }

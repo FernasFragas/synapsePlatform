@@ -8,15 +8,19 @@ import (
 // MessagePoller is the port interface for consuming messages
 // Any message broker (Kafka, RabbitMQ, NATS) must implement this.
 type MessagePoller interface {
-
-	// PollMessage returns the device message and a receipt handle for acknowledgment
-	PollMessage(ctx context.Context) (*DeviceMessage, error)
+	// PollMessage returns the device message and an AckHandler for committing
+	// the offset. The caller MUST call ack(ctx) after successful store.
+	PollMessage(ctx context.Context) (*DeviceMessage, AckHandler, error)
 
 	Close(ctx context.Context) error
 }
 
+// AckHandler is a function that commits the Kafka offset for a consumed message.
+// Analogous to PostHog's producer::AckFuture.
+type AckHandler func(ctx context.Context) error
+
 type Processor struct {
-	poller            MessagePoller
+	poller MessagePoller
 }
 
 func NewProcessor(poller MessagePoller) *Processor {
@@ -25,10 +29,10 @@ func NewProcessor(poller MessagePoller) *Processor {
 	}
 }
 
-func (p *Processor) ProcessData(ctx context.Context) (*DeviceMessage, error) {
-	msg, err := p.poller.PollMessage(ctx)
+func (p *Processor) ProcessData(ctx context.Context) (*DeviceMessage, AckHandler, error) {
+	msg, ack, err := p.poller.PollMessage(ctx)
 	if err != nil {
-		return nil, ProcessorError{
+		return nil, nil, ProcessorError{
 			TypeOfError:            ErrPollingMsg,
 			ErrorOccurredBecauseOf: ErrFailedToPollMsg,
 			Field:                  "msg",
@@ -39,7 +43,7 @@ func (p *Processor) ProcessData(ctx context.Context) (*DeviceMessage, error) {
 	}
 
 	if msg == nil {
-		return nil, ProcessorError{
+		return nil, ack, ProcessorError{
 			TypeOfError:            ErrProcessingMsg,
 			ErrorOccurredBecauseOf: ErrFailedToProcessMsg,
 			Field:                  "msg",
@@ -51,7 +55,7 @@ func (p *Processor) ProcessData(ctx context.Context) (*DeviceMessage, error) {
 
 	err = msg.ValidateRawMessage()
 	if err != nil {
-		return nil, ProcessorError{
+		return nil, ack, ProcessorError{
 			TypeOfError:            ErrValidatingMsg,
 			ErrorOccurredBecauseOf: ErrFailedToValidateMsg,
 			Field:                  "msg",
@@ -61,5 +65,12 @@ func (p *Processor) ProcessData(ctx context.Context) (*DeviceMessage, error) {
 		}
 	}
 
-	return msg, nil
+	return msg, ack, nil
+}
+
+func CommitOffset(ctx context.Context, ack AckHandler, stage string) error {
+	if ack == nil {
+		return nil
+	}
+	return ack(ctx)
 }
