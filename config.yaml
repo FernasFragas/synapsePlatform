@@ -56,8 +56,8 @@ log:
 #tracing:
 #  endpoint: "stdout"
 # Send to Jaeger/Tempo/Collector via OTLP
-tracing:
-  endpoint: "http://localhost:4318/v1/traces"
-# Disable tracing entirely (no-op, zero overhead)
 #tracing:
-#  endpoint: ""
+#  endpoint: "http://localhost:4318/v1/traces"
+# Disable tracing entirely (no-op, zero overhead)
+tracing:
+  endpoint: ""

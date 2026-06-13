@@ -176,6 +176,31 @@ func (s *StorerTestSuite) TestStoreFailure_NilMessage_DoesNotPanic() {
 	s.NoError(err)
 }
 
+// --- AggregateByDomain ---
+
+func (s *StorerTestSuite) TestAggregateByDomain_ReturnsEventTimeBounds() {
+	first := time.Date(2026, 6, 13, 20, 35, 47, 0, time.UTC)
+	last := first.Add(2 * time.Minute)
+	beforeWindow := first.Add(-time.Hour)
+
+	e1 := s.energyEvent("dev-1", first)
+	e1.OccurredAt = first
+	e2 := s.energyEvent("dev-2", last)
+	e2.OccurredAt = last
+
+	s.seedEvents(e1, e2)
+
+	stats, err := s.repo.AggregateByDomain(s.ctx, beforeWindow)
+
+	s.Require().NoError(err)
+	s.Require().Len(stats, 1)
+	s.Equal("energy", stats[0].Domain)
+	s.Equal("energy_meter", stats[0].EventType)
+	s.Equal(int64(2), stats[0].Count)
+	s.True(stats[0].FirstSeen.Equal(first), "first_seen should not fall back to zero time")
+	s.True(stats[0].LastSeen.Equal(last), "last_seen should not fall back to zero time")
+}
+
 // --- Health probe ---
 
 func (s *StorerTestSuite) TestName_ReturnsDB() {

@@ -24,7 +24,7 @@ import (
 )
 
 func main() {
-	cfg, err := internal.LoadConfig("config.yaml")
+	cfg, err := internal.LoadConfig(configPath())
 	if err != nil {
 		slog.Error("Failed to load config", "error", err)
 		os.Exit(1)
@@ -274,4 +274,16 @@ func main() {
 	} else {
 		logger.Info("system stopped gracefully")
 	}
+}
+
+func configPath() string {
+	if path := os.Getenv("SYNAPSE_CONFIG_PATH"); path != "" {
+		return path
+	}
+
+	if len(os.Args) > 1 {
+		return os.Args[1]
+	}
+
+	return "config.yaml"
 }

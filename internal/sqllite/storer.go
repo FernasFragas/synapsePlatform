@@ -411,12 +411,27 @@ func toTime(v interface{}) time.Time {
 		return t
 	}
 	if s, ok := v.(string); ok {
-		if t, err := time.Parse(time.RFC3339, s); err == nil {
-			return t
-		}
+		return parseSQLiteTime(s)
 	}
 	if b, ok := v.([]byte); ok {
-		if t, err := time.Parse(time.RFC3339, string(b)); err == nil {
+		return parseSQLiteTime(string(b))
+	}
+	return time.Time{}
+}
+
+func parseSQLiteTime(value string) time.Time {
+	value = strings.TrimSpace(value)
+	for _, layout := range []string{
+		time.RFC3339Nano,
+		time.RFC3339,
+		"2006-01-02 15:04:05.999999999 -0700 MST",
+		"2006-01-02 15:04:05 -0700 MST",
+		"2006-01-02 15:04:05.999999999Z07:00",
+		"2006-01-02 15:04:05Z07:00",
+		"2006-01-02 15:04:05.999999999",
+		"2006-01-02 15:04:05",
+	} {
+		if t, err := time.Parse(layout, value); err == nil {
 			return t
 		}
 	}

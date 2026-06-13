@@ -2,6 +2,7 @@ package log
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 
 	"synapsePlatform/internal/ingestor"
@@ -22,6 +23,11 @@ func NewIngestorProcessor(logger *slog.Logger, processor ingestor.DataProcessor)
 func (il *IngestorProcessor) ProcessData(ctx context.Context) (*ingestor.Delivery, error) {
 	delivery, err := il.processor.ProcessData(ctx)
 	if err != nil {
+		var procErr ingestor.ProcessorError
+		if errors.As(err, &procErr) && procErr.TypeOfError == ingestor.ErrPollingMsg {
+			return delivery, err
+		}
+
 		il.logger.ErrorContext(ctx, "failed to process message",
 			"delivery", deliveryLogValue(delivery),
 			"error", err,
