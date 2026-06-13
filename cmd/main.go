@@ -24,7 +24,7 @@ import (
 )
 
 func main() {
-	cfg, err := internal.LoadConfig("config.yaml")
+	cfg, err := internal.LoadConfig(configPath())
 	if err != nil {
 		slog.Error("Failed to load config", "error", err)
 		os.Exit(1)
@@ -132,6 +132,16 @@ func main() {
 		consumer := kafka.NewConsumer(kafkaConfig, topic, 2*time.Minute)
 		consumers = append(consumers, consumer)
 
+		statsReader := kafka.NewStatsReader(consumer)
+		metricsStatsReader, err := metrics.NewConsumerStatsReader(meter, tracer, statsReader)
+		if err != nil {
+			logger.Error("failed to build kafka stats metrics", "error", err)
+			os.Exit(1)
+		}
+
+		statsRunner := ingestor.NewStatsRunner(metricsStatsReader, 5*time.Second)
+		g.Go(func() error { return statsRunner.Run(ctx) })
+
 		var consumerProbe health.Probe = consumer
 		consumerProbe = synnapLog.NewHealthProbe(healthLogger, consumerProbe)
 		kafkaProbes = append(kafkaProbes, consumerProbe)
@@ -140,7 +150,7 @@ func main() {
 		batchTimeout := 500 * time.Millisecond // Optimal
 		workersNumber := 2
 
-		run := newIngestionPipeline(
+		run, err := newIngestionPipeline(
 			logger,
 			meter,
 			tracer,
@@ -153,6 +163,11 @@ func main() {
 			batchTimeout,
 			workersNumber,
 		)
+		if err != nil {
+			logger.Error("failed to build Ingestion pipeline", "error", err)
+
+			os.Exit(1)
+		}
 
 		g.Go(func() error { return run(ctx) })
 	}
@@ -259,4 +274,16 @@ func main() {
 	} else {
 		logger.Info("system stopped gracefully")
 	}
+}
+
+func configPath() string {
+	if path := os.Getenv("SYNAPSE_CONFIG_PATH"); path != "" {
+		return path
+	}
+
+	if len(os.Args) > 1 {
+		return os.Args[1]
+	}
+
+	return "config.yaml"
 }

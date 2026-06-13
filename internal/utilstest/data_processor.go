@@ -2,7 +2,6 @@ package utilstest
 
 import (
 	"context"
-	"errors"
 	"synapsePlatform/internal/ingestor"
 	mock_ingestor "synapsePlatform/internal/utilstest/mocksgen/ingestor"
 	"testing"
@@ -33,10 +32,9 @@ func (r *DataProcessor) WithError(err error) *DataProcessor {
 func (r *DataProcessor) WithCancel(cancel context.CancelFunc) *DataProcessor {
 	r.MockDataProcessor.EXPECT().
 		ProcessData(gomock.Any()).
-		DoAndReturn(func(_ context.Context) (*ingestor.DeviceMessage, error) {
+		DoAndReturn(func(_ context.Context) (*ingestor.Delivery, error) {
 			cancel()
-
-			return nil, errors.New("cancelled") //nolint:err113
+			return nil, context.Canceled
 		})
 
 	return r
@@ -44,7 +42,34 @@ func (r *DataProcessor) WithCancel(cancel context.CancelFunc) *DataProcessor {
 
 // WithResult sets the mock to return the given messages.
 func (r *DataProcessor) WithResult(messages *ingestor.DeviceMessage) *DataProcessor {
-	r.MockDataProcessor.EXPECT().ProcessData(gomock.Any()).Return(messages, nil)
+	return r.WithDelivery(&ingestor.Delivery{Message: messages})
+}
 
+// WithDeliveryAndAck returns the given message with a specific ack handler.
+func (r *DataProcessor) WithDeliveryAndAck(messages *ingestor.DeviceMessage, ack ingestor.AckHandler) *DataProcessor {
+	return r.WithDelivery(&ingestor.Delivery{Message: messages, Ack: ack})
+}
+
+// WithResultAndAck returns the given message with a specific ack handler.
+func (r *DataProcessor) WithResultAndAck(messages *ingestor.DeviceMessage, ack ingestor.AckHandler) *DataProcessor {
+	return r.WithDeliveryAndAck(messages, ack)
+}
+
+func (r *DataProcessor) WithDelivery(delivery *ingestor.Delivery) *DataProcessor {
+	r.MockDataProcessor.EXPECT().ProcessData(gomock.Any()).Return(delivery, nil)
+	return r
+}
+
+func (r *DataProcessor) WithTerminalError(delivery *ingestor.Delivery, err error) *DataProcessor {
+	r.MockDataProcessor.EXPECT().
+		ProcessData(gomock.Any()).
+		Return(delivery, ingestor.NewTerminalError(err))
+	return r
+}
+
+func (r *DataProcessor) WithTransientError(delivery *ingestor.Delivery, err error) *DataProcessor {
+	r.MockDataProcessor.EXPECT().
+		ProcessData(gomock.Any()).
+		Return(delivery, ingestor.NewTransientError(err))
 	return r
 }

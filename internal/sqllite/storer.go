@@ -73,14 +73,7 @@ func NewRepo(dbPath string) (*Repo, error) {
 func (db *Repo) StoreData(ctx context.Context, data *ingestor.BaseEvent) error {
 	dataJSON, err := json.Marshal(data.Data)
 	if err != nil {
-		return ingestor.ProcessorError{
-			TypeOfError:            ingestor.ErrStoringMsg,
-			ErrorOccurredBecauseOf: ingestor.ErrFailedToStoreMsg,
-			Field:                  "msg",
-			Expected:               "DeviceMessage",
-			Got:                    dataJSON,
-			Err:                    err,
-		}
+		return ingestor.NewTerminalError(fmt.Errorf("marshal event data: %w", err))
 	}
 
 	value := *data
@@ -99,14 +92,7 @@ func (db *Repo) StoreData(ctx context.Context, data *ingestor.BaseEvent) error {
 		Metadata:      sql.NullString{},
 	})
 	if err != nil {
-		return ingestor.ProcessorError{
-			TypeOfError:            ingestor.ErrStoringMsg,
-			ErrorOccurredBecauseOf: ingestor.ErrFailedToStoreMsg,
-			Field:                  "msg",
-			Expected:               "DeviceMessage",
-			Got:                    dataJSON,
-			Err:                    err,
-		}
+		return classifyStoreError(fmt.Errorf("create event: %w", err))
 	}
 
 	return nil
@@ -140,7 +126,7 @@ func (db *Repo) StoreBatch(ctx context.Context, events []*ingestor.BaseEvent) er
 func (db *Repo) insertChunk(ctx context.Context, events []*ingestor.BaseEvent) error {
 	tx, err := db.Db.BeginTx(ctx, nil)
 	if err != nil {
-		return fmt.Errorf("failed to begin transaction: %w", err)
+		return classifyStoreError(fmt.Errorf("begin transaction: %w", err))
 	}
 	defer tx.Rollback()
 
@@ -152,7 +138,7 @@ func (db *Repo) insertChunk(ctx context.Context, events []*ingestor.BaseEvent) e
 
 		dataJSON, err := json.Marshal(event.Data)
 		if err != nil {
-			return fmt.Errorf("failed to marshal data: %w", err)
+			return ingestor.NewTerminalError(fmt.Errorf("marshal event data: %w", err))
 		}
 
 		args = append(args,
@@ -179,11 +165,10 @@ func (db *Repo) insertChunk(ctx context.Context, events []*ingestor.BaseEvent) e
 
 	_, err = tx.ExecContext(ctx, query, args...)
 	if err != nil {
-		return fmt.Errorf("failed to execute batch insert: %w", err)
+		return classifyStoreError(fmt.Errorf("execute batch insert: %w", err))
 	}
-
 	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("failed to commit transaction: %w", err)
+		return classifyStoreError(fmt.Errorf("commit transaction: %w", err))
 	}
 
 	return nil
@@ -258,10 +243,7 @@ func (db *Repo) StoreFailure(ctx context.Context, failed ingestor.FailedMessage)
 		msgJSON, _ = json.Marshal(failed.Message)
 	}
 
-	var errText string
-	if failed.Err != nil {
-		errText = failed.Err.Error()
-	}
+	errText := failed.ErrorMessage
 
 	_, err := db.Db.ExecContext(ctx,
 		`INSERT INTO failed_messages (stage, message, error, created_at) VALUES (?, ?, ?, datetime('now'))`,
@@ -429,12 +411,27 @@ func toTime(v interface{}) time.Time {
 		return t
 	}
 	if s, ok := v.(string); ok {
-		if t, err := time.Parse(time.RFC3339, s); err == nil {
-			return t
-		}
+		return parseSQLiteTime(s)
 	}
 	if b, ok := v.([]byte); ok {
-		if t, err := time.Parse(time.RFC3339, string(b)); err == nil {
+		return parseSQLiteTime(string(b))
+	}
+	return time.Time{}
+}
+
+func parseSQLiteTime(value string) time.Time {
+	value = strings.TrimSpace(value)
+	for _, layout := range []string{
+		time.RFC3339Nano,
+		time.RFC3339,
+		"2006-01-02 15:04:05.999999999 -0700 MST",
+		"2006-01-02 15:04:05 -0700 MST",
+		"2006-01-02 15:04:05.999999999Z07:00",
+		"2006-01-02 15:04:05Z07:00",
+		"2006-01-02 15:04:05.999999999",
+		"2006-01-02 15:04:05",
+	} {
+		if t, err := time.Parse(layout, value); err == nil {
 			return t
 		}
 	}

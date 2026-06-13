@@ -40,7 +40,7 @@ llm:
   temperature: 0.2
 
 database:
-  path: "data/data.db"
+  path: "data.db"
 
 tracing:
   endpoint: "http://alloy:4318/v1/traces"

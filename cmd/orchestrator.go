@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"synapsePlatform/internal/ingestor"
 	"synapsePlatform/internal/kafka"
@@ -14,46 +15,33 @@ import (
 )
 
 func newIngestionPipeline(
-	logger *slog.Logger,
-	meter metric.Meter,
-	tracer trace.Tracer,
-	consumer *kafka.KafkaConsumer,
-	storer ingestor.MessageStorer,
-	transformer ingestor.Transformer,
-	failures ingestor.FailureStorer,
-	domains []ingestor.DataTypes,
-	batchSize int,
-	batchTimeout time.Duration,
-	workersNumb int,
-) func(ctx context.Context) error {
+	logger *slog.Logger, meter metric.Meter, tracer trace.Tracer,
+	consumer *kafka.KafkaConsumer, storer ingestor.MessageStorer,
+	transformer ingestor.Transformer, failures ingestor.FailureStorer,
+	domains []ingestor.DataTypes, batchSize int,
+	batchTimeout time.Duration, workersNumb int,
+) (func(ctx context.Context) error, error) {
 	topicLogger := logger.With("topic", consumer.Name())
 
 	var poller ingestor.MessagePoller = synnapLog.NewMessagePoller(topicLogger, consumer)
 	metricsPoller, err := metrics.NewMessagePoller(meter, tracer, poller)
 	if err != nil {
-		logger.Error("failed to build metrics poller", "error", err)
-
-		return func(ctx context.Context) error { return err }
+		return nil, fmt.Errorf("metrics poller: %w", err)
 	}
 
 	proc := ingestor.NewProcessor(metricsPoller)
 	var dataProc ingestor.DataProcessor = synnapLog.NewIngestorProcessor(topicLogger, proc)
 	metricsProc, err := metrics.NewIngestorProcessor(meter, tracer, dataProc)
 	if err != nil {
-		logger.Error("failed to build metrics processor", "error", err)
-
-		return func(ctx context.Context) error { return err }
+		return nil, fmt.Errorf("metrics processor: %w", err)
 	}
 
-	ing := ingestor.New(
-		ingestor.Config{
-			CompatibleDataTypes: domains,
-			BatchSize:           batchSize,
-			BatchTimeout:        batchTimeout,
-			NumWorkers: workersNumb,
-		},
-		metricsProc, storer, transformer, failures,
-	)
+	ing := ingestor.New(ingestor.Config{
+		CompatibleDataTypes: domains,
+		BatchSize:           batchSize,
+		BatchTimeout:        batchTimeout,
+		NumWorkers:          workersNumb,
+	}, metricsProc, storer, transformer, failures)
 
-	return ing.Ingest
+	return ing.Ingest, nil
 }

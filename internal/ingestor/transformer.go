@@ -40,13 +40,13 @@ func (t *MessageTransformer) Transform(ctx context.Context, msg *DeviceMessage) 
 	domain := ParseDomainType(msg.Type)
 
 	if !t.isDomainSupported(domain) {
-		return nil, ProcessorError{ // todo fix fields and
+		return nil, ProcessorError{
 			TypeOfError:            ErrValidatingData,
 			ErrorOccurredBecauseOf: ErrFailedToValidateData,
 			Field:                  "domain",
 			Expected:               "DataTypes",
 			Got:                    domain,
-			Err:                    fmt.Errorf("unsupported domain: %s (supported: %v)", domain, t.dataTypesSupported),
+			Err:                    fmt.Errorf("%w: unsupported domain %s (supported: %v)", ErrUnknownDataType, domain, t.dataTypesSupported),
 		}
 	}
 

@@ -81,7 +81,7 @@ func (s *PipelineTestSuite) TestFullPipeline_MessageFlowsThroughToDatabase() {
 	s.Require().Len(result.Items, 1)
 
 	stored := result.Items[0]
-	s.Equal("energy_meter", stored.Domain)
+	s.Equal("energy", stored.Domain)
 	s.Equal("energy_meter", stored.EventType)
 	s.Equal("pipeline-device", stored.EntityID)
 	s.Equal("1.0.0", stored.SchemaVersion)
@@ -92,7 +92,7 @@ func (s *PipelineTestSuite) TestFullPipeline_MessageFlowsThroughToDatabase() {
 	s.InDelta(750.0, reading.EnergyWh, 0.01)
 }
 
-func (s *PipelineTestSuite) TestFullPipeline_ProcessorError_LandsInFailedMessages() {
+func (s *PipelineTestSuite) TestFullPipeline_TransientProcessorError_DoesNotLandInFailedMessages() {
 	ctx, cancel := context.WithCancel(s.ctx)
 
 	s.processor.WithError(errors.New("broker timeout"))
@@ -123,7 +123,7 @@ func (s *PipelineTestSuite) TestFullPipeline_ProcessorError_LandsInFailedMessage
 		s.repo.Db.QueryRowContext(context.Background(),
 			"SELECT COUNT(*) FROM failed_messages WHERE stage = 'process'").Scan(&count),
 	)
-	s.Equal(1, count)
+	s.Equal(0, count)
 
 	result, err := s.repo.ListEvents(context.Background(), ingestor.PageRequest{Limit: 10})
 	s.Require().NoError(err)

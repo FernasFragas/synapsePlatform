@@ -59,3 +59,72 @@ func (e ProcessorError) Error() string {
 func (e ProcessorError) Unwrap() error {
 	return e.Err
 }
+
+type ErrorClass int
+
+const (
+	ClassTransient ErrorClass = iota
+	ClassTerminal
+)
+
+type ClassifiedError interface {
+	error
+	ErrorClass() ErrorClass
+}
+
+type classifiedError struct {
+	class ErrorClass
+	err   error
+}
+
+func (e classifiedError) Error() string { return e.err.Error() }
+func (e classifiedError) Unwrap() error { return e.err }
+func (e classifiedError) ErrorClass() ErrorClass {
+	return e.class
+}
+
+func NewTransientError(err error) error {
+	if err == nil {
+		return nil
+	}
+
+	return classifiedError{class: ClassTransient, err: err}
+}
+
+func NewTerminalError(err error) error {
+	if err == nil {
+		return nil
+	}
+
+	return classifiedError{class: ClassTerminal, err: err}
+}
+
+func Classify(err error) ErrorClass {
+	if err == nil {
+		return ClassTransient
+	}
+
+	var classified ClassifiedError
+	if errors.As(err, &classified) {
+		return classified.ErrorClass()
+	}
+
+	switch {
+	case errors.Is(err, ErrMissingFieldDeviceID),
+		errors.Is(err, ErrMissingFieldType),
+		errors.Is(err, ErrMissingFieldTimestamp),
+		errors.Is(err, ErrUnknownDataType):
+		return ClassTerminal
+	default:
+		return ClassTransient
+	}
+}
+
+func (c ErrorClass) String() string {
+	switch c {
+	case ClassTerminal:
+		return "terminal"
+	default:
+		return "transient"
+	}
+}

@@ -18,21 +18,22 @@ func NewFailurePublisher(logger *slog.Logger, storer ingestor.FailureStorer) *Pu
 
 func (f *Publisher) StoreFailure(ctx context.Context, failed ingestor.FailedMessage) error {
 	err := f.failuresPublisher.StoreFailure(ctx, failed)
+	attrs := []any{
+		"stage", failed.Stage,
+		"error_type", failed.ErrorType,
+		"message", failed.Message,
+		"error_message", failed.ErrorMessage,
+		"retry_count", failed.RetryCount,
+		"source", failed.Metadata.Source,
+		"labels", failed.Metadata.Labels,
+		"failed_at", failed.FailedAt,
+	}
+
 	if err != nil {
-		f.logger.ErrorContext(ctx, "failed to store failure",
-			"stage", failed.Stage,
-			"message", failed.Message,
-			"cause", failed.Err,
-			"error", err,
-		)
+		f.logger.ErrorContext(ctx, "failed to store failure", append(attrs, "error", err)...)
 		return err
 	}
 
-	f.logger.WarnContext(ctx, "failure stored",
-		"stage", failed.Stage,
-		"message", failed.Message,
-		"cause", failed.Err,
-	)
-
+	f.logger.WarnContext(ctx, "failure stored", attrs...)
 	return nil
 }
