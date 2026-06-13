@@ -79,40 +79,34 @@ func NewMessagePoller(meter metric.Meter, tracer trace.Tracer, poller ingestor.M
 	}, nil
 }
 
-func (m *MessagePoller) PollMessage(ctx context.Context) (*ingestor.DeviceMessage, ingestor.AckHandler, error) {
+func (m *MessagePoller) PollMessage(ctx context.Context) (*ingestor.Delivery, error) {
 	ctx, span := m.tracer.Start(ctx, "poller.poll_message")
 	defer span.End()
 
 	start := time.Now()
-
-	msg, ack, err := m.poller.PollMessage(ctx)
-
+	delivery, err := m.poller.PollMessage(ctx)
 	elapsed := time.Since(start).Seconds()
-
-	op := attribute.String(AttrOperation, "poll_message")
 
 	if err != nil {
 		span.RecordError(err)
-		m.errors.Add(ctx, 1, metric.WithAttributes(op))
-		m.total.Add(ctx, 1, metric.WithAttributes(op, attribute.String(AttrStatus, StatusError)))
-		m.duration.Record(ctx, elapsed, metric.WithAttributes(op, attribute.String(AttrStatus, StatusError)))
+		m.errors.Add(ctx, 1, metric.WithAttributes(attribute.String(AttrOperation, "poll_message")))
+		m.duration.Record(ctx, elapsed, metric.WithAttributes(attribute.String(AttrStatus, StatusError)))
+		m.instrumentAck(delivery)
 
-		return msg, ack, err
+		return delivery, err
 	}
 
-	attrs := []attribute.KeyValue{op, attribute.String(AttrStatus, StatusSuccess)}
-	if msg != nil {
-		attrs = append(attrs, attribute.String(AttrDeviceType, msg.Type))
-		span.SetAttributes(
-			attribute.String("device_id", msg.DeviceID),
-			attribute.String("device_type", msg.Type),
-		)
+	attrs := []attribute.KeyValue{attribute.String(AttrStatus, StatusSuccess)}
+	if delivery != nil && delivery.Message != nil {
+		attrs = append(attrs, attribute.String(AttrDeviceType, delivery.Message.Type))
 	}
 
 	m.total.Add(ctx, 1, metric.WithAttributes(attrs...))
-	m.duration.Record(ctx, elapsed, metric.WithAttributes(op, attribute.String(AttrStatus, StatusSuccess)))
+	m.duration.Record(ctx, elapsed, metric.WithAttributes(attrs...))
 
-	return msg, ack, nil
+	m.instrumentAck(delivery)
+
+	return delivery, nil
 }
 
 func (m *MessagePoller) Close(ctx context.Context) error {
@@ -136,4 +130,29 @@ func (m *MessagePoller) Close(ctx context.Context) error {
 	m.duration.Record(ctx, elapsed, metric.WithAttributes(op, attribute.String(AttrStatus, StatusSuccess)))
 
 	return nil
+}
+
+// maybe not needed ??
+func (m *MessagePoller) instrumentAck(delivery *ingestor.Delivery) {
+	if delivery == nil || delivery.Ack == nil {
+		return
+	}
+
+	rawAck := delivery.Ack
+	delivery.Ack = func(ctx context.Context) error {
+		start := time.Now()
+		err := rawAck(ctx)
+		elapsed := time.Since(start).Seconds()
+
+		if err != nil {
+			m.ackErrors.Add(ctx, 1)
+			m.ackTotal.Add(ctx, 1, metric.WithAttributes(attribute.String(AttrStatus, StatusError)))
+			m.ackDuration.Record(ctx, elapsed, metric.WithAttributes(attribute.String(AttrStatus, StatusError)))
+			return err
+		}
+
+		m.ackTotal.Add(ctx, 1, metric.WithAttributes(attribute.String(AttrStatus, StatusSuccess)))
+		m.ackDuration.Record(ctx, elapsed, metric.WithAttributes(attribute.String(AttrStatus, StatusSuccess)))
+		return nil
+	}
 }

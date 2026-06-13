@@ -52,17 +52,24 @@ func NewOffsetCommitter(reader *kafka.Reader) *OffsetCommitter {
 // The returned handler is invoked later, once msg is durably stored (or DLQ'd);
 // it records completion and commits the new contiguous watermark.
 func (c *OffsetCommitter) Ack(msg kafka.Message) ingestor.AckHandler {
-	c.mu.Lock()
-	if c.parts[msg.Partition] == nil {
-		c.parts[msg.Partition] = &partitionProgress{
-			next:      msg.Offset,
-			completed: map[int64]kafka.Message{},
-		}
-	}
-	c.mu.Unlock()
+	c.register(msg)
 
 	return func(ctx context.Context) error {
 		return c.complete(ctx, msg)
+	}
+}
+
+func (c *OffsetCommitter) register(msg kafka.Message) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if c.parts[msg.Partition] != nil {
+		return
+	}
+
+	c.parts[msg.Partition] = &partitionProgress{
+		next:      msg.Offset,
+		completed: make(map[int64]kafka.Message),
 	}
 }
 

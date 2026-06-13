@@ -8,19 +8,30 @@ import (
 // MessagePoller is the port interface for consuming messages
 // Any message broker (Kafka, RabbitMQ, NATS) must implement this.
 type MessagePoller interface {
-	// PollMessage returns the device message and an AckHandler for committing
-	// the offset. The caller MUST call ack(ctx) after successful store.
-	PollMessage(ctx context.Context) (*DeviceMessage, AckHandler, error)
+	PollMessage(ctx context.Context) (*Delivery, error)
 
 	Close(ctx context.Context) error
 }
 
-// AckHandler is a function that commits the Kafka offset for a consumed message.
-// Analogous to PostHog's producer::AckFuture.
+// AckHandler marks a delivery as durably handled by the inbound adapter.
+// For Kafka this commits an offset; other adapters can map it to their own
+// acknowledgment mechanism.
 type AckHandler func(ctx context.Context) error
 
 type Processor struct {
 	poller MessagePoller
+}
+
+type MessageMetadata struct {
+	Source  string
+	Headers map[string]string
+	Labels  map[string]string
+}
+
+type Delivery struct {
+	Message  *DeviceMessage
+	Metadata MessageMetadata
+	Ack      AckHandler
 }
 
 func NewProcessor(poller MessagePoller) *Processor {
@@ -29,48 +40,40 @@ func NewProcessor(poller MessagePoller) *Processor {
 	}
 }
 
-func (p *Processor) ProcessData(ctx context.Context) (*DeviceMessage, AckHandler, error) {
-	msg, ack, err := p.poller.PollMessage(ctx)
+func (p *Processor) ProcessData(ctx context.Context) (*Delivery, error) {
+	delivery, err := p.poller.PollMessage(ctx)
 	if err != nil {
-		return nil, nil, ProcessorError{
+		return nil, ProcessorError{
 			TypeOfError:            ErrPollingMsg,
 			ErrorOccurredBecauseOf: ErrFailedToPollMsg,
-			Field:                  "msg",
-			Expected:               "DeviceMessage",
-			Got:                    msg,
+			Field:                  "delivery",
+			Expected:               "Delivery",
+			Got:                    delivery,
 			Err:                    err,
 		}
 	}
 
-	if msg == nil {
-		return nil, ack, ProcessorError{
+	if delivery == nil || delivery.Message == nil {
+		return delivery, ProcessorError{
 			TypeOfError:            ErrProcessingMsg,
 			ErrorOccurredBecauseOf: ErrFailedToProcessMsg,
-			Field:                  "msg",
+			Field:                  "delivery.message",
 			Expected:               "DeviceMessage",
-			Got:                    msg,
+			Got:                    delivery,
 			Err:                    ErrNilMessage,
 		}
 	}
 
-	err = msg.ValidateRawMessage()
-	if err != nil {
-		return nil, ack, ProcessorError{
+	if err := delivery.Message.ValidateRawMessage(); err != nil {
+		return delivery, ProcessorError{
 			TypeOfError:            ErrValidatingMsg,
 			ErrorOccurredBecauseOf: ErrFailedToValidateMsg,
-			Field:                  "msg",
-			Expected:               "DeviceMessage",
-			Got:                    msg,
+			Field:                  "delivery.message",
+			Expected:               "valid DeviceMessage",
+			Got:                    delivery.Message,
 			Err:                    err,
 		}
 	}
 
-	return msg, ack, nil
-}
-
-func CommitOffset(ctx context.Context, ack AckHandler, stage string) error {
-	if ack == nil {
-		return nil
-	}
-	return ack(ctx)
+	return delivery, nil
 }

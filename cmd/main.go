@@ -132,14 +132,15 @@ func main() {
 		consumer := kafka.NewConsumer(kafkaConfig, topic, 2*time.Minute)
 		consumers = append(consumers, consumer)
 
-		statsCollector, err := kafka.NewStatsCollector(consumer, meter)
+		statsReader := kafka.NewStatsReader(consumer)
+		metricsStatsReader, err := metrics.NewConsumerStatsReader(meter, tracer, statsReader)
 		if err != nil {
-			logger.Error("failed to build kafka stats collector", "error", err)
-
+			logger.Error("failed to build kafka stats metrics", "error", err)
 			os.Exit(1)
 		}
-		// Run it in the same errgroup as the pipeline, so it shuts down together.
-		g.Go(func() error { return statsCollector.Run(ctx) })
+
+		statsRunner := ingestor.NewStatsRunner(metricsStatsReader, 5*time.Second)
+		g.Go(func() error { return statsRunner.Run(ctx) })
 
 		var consumerProbe health.Probe = consumer
 		consumerProbe = synnapLog.NewHealthProbe(healthLogger, consumerProbe)

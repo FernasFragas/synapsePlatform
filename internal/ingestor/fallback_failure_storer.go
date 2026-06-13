@@ -12,17 +12,14 @@ type FallbackFailureStorer struct {
 }
 
 type FailedMessage struct {
-	ID            string // unique ID for DLQ lookup
-	OriginalTopic string // e.g., "ingestion.raw"
-	Partition     int    // Kafka partition
-	Offset        int64  // Kafka offset
-	Stage         string // "process", "transform", "store"
-	ErrorType     string // "transient", "terminal", "poison"
-	ErrorMessage  string
-	RetryCount    int // how many times retried
-	Message       *DeviceMessage
-	Headers       map[string]string // original Kafka headers
-	Timestamp     time.Time         // when failure occurred
+	ID           string
+	Stage        string
+	ErrorType    string
+	ErrorMessage string
+	RetryCount   int
+	Message      *DeviceMessage
+	Metadata     MessageMetadata
+	FailedAt     time.Time
 }
 
 func NewFallbackFailureStorer(primary, secondary FailureStorer) *FallbackFailureStorer {

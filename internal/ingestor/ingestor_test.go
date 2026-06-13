@@ -31,7 +31,6 @@ func (s *IngestorTestSuite) SetupTest() {
 	s.failures = utilstest.NewFailureStorer(s.T())
 }
 
-
 func (s *IngestorTestSuite) TestIngest_ProcessorError_SkipsAndContinues() {
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -90,4 +89,64 @@ func validEvent() *ingestor.BaseEvent {
 			CurrentMA: 455,
 		},
 	}
+}
+
+func (s *IngestorTestSuite) TestIngest_HappyPath_AcksAfterStore() {
+	ctx, cancel := context.WithCancel(context.Background())
+	ack := utilstest.NewAck(s.T())
+
+	msg := validMessage()
+	event := validEvent()
+
+	s.processor.WithDeliveryAndAck(msg, ack.Handler())
+	s.transformer.WithResult(event)
+	s.storer.WithSuccess()
+	s.processor.WithCancel(cancel)
+	s.failures.ExpectNoFailure()
+
+	ing := ingestor.New(ingestor.Config{}, s.processor, s.storer, s.transformer, s.failures)
+	s.Require().NoError(ing.Ingest(ctx))
+	ack.RequireCalls(1)
+}
+
+func (s *IngestorTestSuite) TestIngest_TransientProcessError_DoesNotAckOrStoreFailure() {
+	ctx, cancel := context.WithCancel(context.Background())
+	ack := utilstest.NewAck(s.T())
+
+	delivery := &ingestor.Delivery{Ack: ack.Handler()}
+	s.processor.WithTransientError(delivery, errors.New("broker timeout"))
+	s.processor.WithCancel(cancel)
+	s.failures.ExpectNoFailure()
+
+	ing := ingestor.New(ingestor.Config{}, s.processor, s.storer, s.transformer, s.failures)
+	s.Require().NoError(ing.Ingest(ctx))
+	ack.RequireCalls(0)
+}
+
+func (s *IngestorTestSuite) TestIngest_TerminalProcessError_StoresFailureThenAcks() {
+	ctx, cancel := context.WithCancel(context.Background())
+	ack := utilstest.NewAck(s.T())
+
+	delivery := &ingestor.Delivery{Ack: ack.Handler()}
+	s.processor.WithTerminalError(delivery, errors.New("bad payload"))
+	s.failures.ExpectFailure("process", ingestor.ClassTerminal.String())
+	s.processor.WithCancel(cancel)
+
+	ing := ingestor.New(ingestor.Config{}, s.processor, s.storer, s.transformer, s.failures)
+	s.Require().NoError(ing.Ingest(ctx))
+	ack.RequireCalls(1)
+}
+
+func (s *IngestorTestSuite) TestIngest_TerminalFailureStoreFails_DoesNotAck() {
+	ctx, cancel := context.WithCancel(context.Background())
+	ack := utilstest.NewAck(s.T())
+
+	delivery := &ingestor.Delivery{Ack: ack.Handler()}
+	s.processor.WithTerminalError(delivery, errors.New("bad payload"))
+	s.failures.ExpectFailureStoreError(errors.New("dlq unavailable"))
+	s.processor.WithCancel(cancel)
+
+	ing := ingestor.New(ingestor.Config{}, s.processor, s.storer, s.transformer, s.failures)
+	s.Require().NoError(ing.Ingest(ctx))
+	ack.RequireCalls(0)
 }

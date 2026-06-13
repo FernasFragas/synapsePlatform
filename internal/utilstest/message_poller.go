@@ -50,3 +50,22 @@ func (r *MessagePoller) WithResultAndAck(messages *ingestor.DeviceMessage, ack i
 
 	return r
 }
+
+func (r *MessagePoller) WithDelivery(delivery *ingestor.Delivery) *MessagePoller {
+	r.MockMessagePoller.EXPECT().PollMessage(gomock.Any()).Return(delivery, nil)
+	return r
+}
+
+func (r *MessagePoller) WithTerminalDecodeFailure(delivery *ingestor.Delivery, err error) *MessagePoller {
+	r.MockMessagePoller.EXPECT().
+		PollMessage(gomock.Any()).
+		Return(delivery, ingestor.NewTerminalError(err))
+	return r
+}
+
+func (r *MessagePoller) WithTransientPollFailure(err error) *MessagePoller {
+	r.MockMessagePoller.EXPECT().
+		PollMessage(gomock.Any()).
+		Return(nil, ingestor.NewTransientError(err))
+	return r
+}

@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"synapsePlatform/internal/ingestor"
 	"sync"
 	"time"
@@ -52,38 +53,40 @@ func NewConsumer(config StreamingConfigs, topic string, maxStale time.Duration) 
 	}
 }
 
-func (c *KafkaConsumer) PollMessage(ctx context.Context) (*ingestor.DeviceMessage, ingestor.AckHandler, error) {
-	select {
-	case <-ctx.Done():
-		return nil, nil, nil
-	default:
-		// ReadMessage It needs to commit after succefully stored the data
-		kafkaMsg, err := c.reader.FetchMessage(ctx)
-		if err != nil {
-			return nil, nil, fmt.Errorf("fetch message: %w", err)
-		}
+func (c *KafkaConsumer) PollMessage(ctx context.Context) (*ingestor.Delivery, error) {
+	kafkaMsg, err := c.reader.FetchMessage(ctx)
+	if err != nil {
+		return nil, ingestor.NewTransientError(fmt.Errorf("fetch message: %w", err))
+	}
 
-		// Update staleness tracker (Tier 1.3.2)
-		c.mu.Lock()
-		c.lastPoll = time.Now()
-		c.mu.Unlock()
+	c.markPolled()
 
-		// Bind the commit handle up front so EVERY outcome -- including a terminal
-		// decode error -- routes through the contiguous committer. Committing the
-		// raw offset directly here would skip any earlier in-flight message on this
-		// partition (see OffsetCommitter).
-		ack := c.committer.Ack(kafkaMsg)
+	ack := c.committer.Ack(kafkaMsg)
 
-		var deviceMessage ingestor.DeviceMessage
-		if err := json.Unmarshal(kafkaMsg.Value, &deviceMessage); err != nil {
-			// Terminal: the payload will never parse. So we hand the ack back so the
-			// caller can DLQ then commit it, exactly like any other terminal error.
-			return nil, ack, fmt.Errorf("decode device message: %w", err)
-		}
+	var msg ingestor.DeviceMessage
+	if err := json.Unmarshal(kafkaMsg.Value, &msg); err != nil {
+		return &ingestor.Delivery{
+			Metadata: kafkaMetadata(kafkaMsg),
+			Ack:      ack,
+		}, ingestor.NewTerminalError(fmt.Errorf("decode device message: %w", err))
+	}
 
-		deviceMessage.Headers = c.convertHeaders(kafkaMsg.Headers)
+	return &ingestor.Delivery{
+		Message:  &msg,
+		Metadata: kafkaMetadata(kafkaMsg),
+		Ack:      ack,
+	}, nil
+}
 
-		return &deviceMessage, ack, nil
+func kafkaMetadata(msg kafka.Message) ingestor.MessageMetadata {
+	return ingestor.MessageMetadata{
+		Source:  "kafka",
+		Headers: convertHeaders(msg.Headers),
+		Labels: map[string]string{
+			"topic":     msg.Topic,
+			"partition": strconv.Itoa(msg.Partition),
+			"offset":    strconv.FormatInt(msg.Offset, 10),
+		},
 	}
 }
 
@@ -114,8 +117,18 @@ func (c *KafkaConsumer) Close(context.Context) error {
 	return c.reader.Close()
 }
 
-func (c *KafkaConsumer) convertHeaders(kafkaHeaders []kafka.Header) map[string]string {
-	headers := make(map[string]string)
+func (c *KafkaConsumer) markPolled() {
+	c.mu.Lock()
+	c.lastPoll = time.Now()
+	c.mu.Unlock()
+}
+
+func convertHeaders(kafkaHeaders []kafka.Header) map[string]string {
+	if len(kafkaHeaders) == 0 {
+		return nil
+	}
+
+	headers := make(map[string]string, len(kafkaHeaders))
 	for _, h := range kafkaHeaders {
 		headers[h.Key] = string(h.Value)
 	}

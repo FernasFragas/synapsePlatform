@@ -80,40 +80,31 @@ func NewIngestorProcessor(meter metric.Meter, tracer trace.Tracer, processor ing
 	}, nil
 }
 
-func (m *IngestorProcessor) ProcessData(ctx context.Context) (*ingestor.DeviceMessage, ingestor.AckHandler, error) {
+func (m *IngestorProcessor) ProcessData(ctx context.Context) (*ingestor.Delivery, error) {
 	ctx, span := m.tracer.Start(ctx, "ingestor.process_data")
 	defer span.End()
 
 	start := time.Now()
-
-	msg, ack, err := m.processor.ProcessData(ctx)
-
+	delivery, err := m.processor.ProcessData(ctx)
 	elapsed := time.Since(start).Seconds()
 
 	if err != nil {
 		span.SetStatus(codes.Error, err.Error())
 		span.RecordError(err)
-
-		m.errors.Add(ctx, 1, metric.WithAttributes(
-			attribute.String(AttrOperation, "process_data"),
-		))
-
+		m.errors.Add(ctx, 1, metric.WithAttributes(attribute.String(AttrOperation, "process_data")))
 		m.total.Add(ctx, 1, metric.WithAttributes(
 			attribute.String(AttrOperation, "process_data"),
 			attribute.String(AttrStatus, StatusError),
 		))
-
-		m.duration.Record(ctx, elapsed, metric.WithAttributes(
-			attribute.String(AttrStatus, StatusError),
-		))
-
-		return nil, ack, err
+		m.duration.Record(ctx, elapsed, metric.WithAttributes(attribute.String(AttrStatus, StatusError)))
+		return delivery, err
 	}
 
-	if msg != nil {
+	if delivery != nil && delivery.Message != nil {
 		span.SetAttributes(
-			attribute.String(AttrDeviceID, msg.DeviceID),
-			attribute.String(AttrDeviceType, msg.Type),
+			attribute.String(AttrDeviceID, delivery.Message.DeviceID),
+			attribute.String(AttrDeviceType, delivery.Message.Type),
+			attribute.String("source", delivery.Metadata.Source),
 		)
 	}
 
@@ -121,10 +112,7 @@ func (m *IngestorProcessor) ProcessData(ctx context.Context) (*ingestor.DeviceMe
 		attribute.String(AttrOperation, "process_data"),
 		attribute.String(AttrStatus, StatusSuccess),
 	))
+	m.duration.Record(ctx, elapsed, metric.WithAttributes(attribute.String(AttrStatus, StatusSuccess)))
 
-	m.duration.Record(ctx, elapsed, metric.WithAttributes(
-		attribute.String(AttrStatus, StatusSuccess),
-	))
-
-	return msg, ack, nil
+	return delivery, nil
 }

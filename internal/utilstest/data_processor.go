@@ -54,3 +54,22 @@ func (r *DataProcessor) WithResultAndAck(messages *ingestor.DeviceMessage, ack i
 
 	return r
 }
+
+func (r *DataProcessor) WithDelivery(delivery *ingestor.Delivery) *DataProcessor {
+	r.MockDataProcessor.EXPECT().ProcessData(gomock.Any()).Return(delivery, nil)
+	return r
+}
+
+func (r *DataProcessor) WithTerminalError(delivery *ingestor.Delivery, err error) *DataProcessor {
+	r.MockDataProcessor.EXPECT().
+		ProcessData(gomock.Any()).
+		Return(delivery, ingestor.NewTerminalError(err))
+	return r
+}
+
+func (r *DataProcessor) WithTransientError(delivery *ingestor.Delivery, err error) *DataProcessor {
+	r.MockDataProcessor.EXPECT().
+		ProcessData(gomock.Any()).
+		Return(delivery, ingestor.NewTransientError(err))
+	return r
+}

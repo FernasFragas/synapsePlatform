@@ -53,3 +53,27 @@ func (f *FailureStorer) ExpectStage(stage string) *FailureStorer {
 
 	return f
 }
+
+func (f *FailureStorer) ExpectFailure(stage, errorType string) *FailureStorer {
+	f.MockFailureStorer.EXPECT().
+		StoreFailure(gomock.Any(), gomock.Cond(func(x any) bool {
+			fm, ok := x.(ingestor.FailedMessage)
+			return ok && fm.Stage == stage && fm.ErrorType == errorType
+		})).
+		Return(nil)
+	return f
+}
+
+func (f *FailureStorer) ExpectFailureStoreError(err error) *FailureStorer {
+	f.MockFailureStorer.EXPECT().
+		StoreFailure(gomock.Any(), gomock.Any()).
+		Return(err)
+	return f
+}
+
+func (f *FailureStorer) ExpectNoFailure() *FailureStorer {
+	f.MockFailureStorer.EXPECT().
+		StoreFailure(gomock.Any(), gomock.Any()).
+		Times(0)
+	return f
+}
