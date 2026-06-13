@@ -40,35 +40,54 @@ func (s *ProcessorTestSuite) TestProcessData_ValidMessage_ReturnsMessage() {
 	}
 	s.poller.WithResult(msg)
 
-	result, _, err := s.subject.ProcessData(context.Background())
+	delivery, err := s.subject.ProcessData(context.Background())
 
 	s.Require().NoError(err, "valid message should not produce an error")
-	s.Equal(msg, result, "returned message should be the one from the poller")
+	s.Require().NotNil(delivery)
+	s.Equal(msg, delivery.Message, "returned message should be the one from the poller")
 }
 
 func (s *ProcessorTestSuite) TestProcessData_PollerError_ReturnsProcessorError() {
 	pollerErr := errors.New("broker unavailable")
 	s.poller.WithError(pollerErr)
 
-	result, _, err := s.subject.ProcessData(context.Background())
+	delivery, err := s.subject.ProcessData(context.Background())
 
-	s.Nil(result, "result should be nil when poller fails")
+	s.Nil(delivery, "delivery should be nil when poller fails")
 	s.Require().Error(err, "poller error should be propagated")
 
 	var procErr ingestor.ProcessorError
 	s.Require().ErrorAs(err, &procErr, "error should be wrapped in ProcessorError")
 	s.Equal(ingestor.ErrPollingMsg, procErr.TypeOfError, "error type should be ErrPollingMsg")
 	s.Equal(ingestor.ErrFailedToPollMsg, procErr.ErrorOccurredBecauseOf, "error reason should be ErrFailedToPollMsg")
-	s.Equal("msg", procErr.Field, "field should identify the message field")
+	s.Equal("delivery", procErr.Field, "field should identify the delivery field")
 	s.ErrorIs(procErr.Err, pollerErr, "original poller error should be preserved in the chain")
+}
+
+func (s *ProcessorTestSuite) TestProcessData_TerminalPollErrorWithDelivery_ReturnsDelivery() {
+	delivery := &ingestor.Delivery{
+		Metadata: ingestor.MessageMetadata{Source: "kafka"},
+	}
+	pollerErr := errors.New("bad payload")
+	s.poller.WithTerminalDecodeFailure(delivery, pollerErr)
+
+	actual, err := s.subject.ProcessData(context.Background())
+
+	s.Require().Error(err)
+	s.Same(delivery, actual, "terminal poll errors with a delivery must keep the delivery for failure storage and ack")
+
+	var procErr ingestor.ProcessorError
+	s.Require().ErrorAs(err, &procErr)
+	s.Equal(ingestor.ErrPollingMsg, procErr.TypeOfError)
+	s.ErrorIs(procErr.Err, pollerErr)
 }
 
 func (s *ProcessorTestSuite) TestProcessData_PollerContextCancelled_ReturnsProcessorError() {
 	s.poller.WithError(context.Canceled)
 
-	result, _, err := s.subject.ProcessData(context.Background())
+	delivery, err := s.subject.ProcessData(context.Background())
 
-	s.Nil(result, "result should be nil on context cancellation")
+	s.Nil(delivery, "delivery should be nil on context cancellation")
 	s.Require().Error(err, "cancelled context error should be propagated")
 
 	var procErr ingestor.ProcessorError
@@ -80,9 +99,9 @@ func (s *ProcessorTestSuite) TestProcessData_PollerContextCancelled_ReturnsProce
 func (s *ProcessorTestSuite) TestProcessData_NilMessage_ReturnsProcessorError() {
 	s.poller.WithNoResult()
 
-	result, _, err := s.subject.ProcessData(context.Background())
+	delivery, err := s.subject.ProcessData(context.Background())
 
-	s.Nil(result, "result should be nil when poller returns nil message")
+	s.Nil(delivery, "delivery should be nil when poller returns nil message")
 	s.Require().Error(err, "nil message should produce an error")
 
 	var procErr ingestor.ProcessorError
@@ -99,9 +118,9 @@ func (s *ProcessorTestSuite) TestProcessData_MissingDeviceID_ReturnsValidationEr
 		Timestamp: time.Now(),
 	})
 
-	result, _, err := s.subject.ProcessData(context.Background())
+	delivery, err := s.subject.ProcessData(context.Background())
 
-	s.Nil(result, "result should be nil when validation fails")
+	s.Require().NotNil(delivery, "delivery should be returned when validation fails so it can be acked after DLQ")
 	s.Require().Error(err, "missing DeviceID should produce a validation error")
 
 	var procErr ingestor.ProcessorError
@@ -118,9 +137,9 @@ func (s *ProcessorTestSuite) TestProcessData_MissingType_ReturnsValidationError(
 		Timestamp: time.Now(),
 	})
 
-	result, _, err := s.subject.ProcessData(context.Background())
+	delivery, err := s.subject.ProcessData(context.Background())
 
-	s.Nil(result)
+	s.Require().NotNil(delivery)
 	var procErr ingestor.ProcessorError
 	s.Require().ErrorAs(err, &procErr)
 	s.Equal(ingestor.ErrValidatingMsg, procErr.TypeOfError)
@@ -134,9 +153,9 @@ func (s *ProcessorTestSuite) TestProcessData_MissingTimestamp_ReturnsValidationE
 		Timestamp: time.Time{},
 	})
 
-	result, _, err := s.subject.ProcessData(context.Background())
+	delivery, err := s.subject.ProcessData(context.Background())
 
-	s.Nil(result)
+	s.Require().NotNil(delivery)
 	var procErr ingestor.ProcessorError
 	s.Require().ErrorAs(err, &procErr)
 	s.Equal(ingestor.ErrValidatingMsg, procErr.TypeOfError)

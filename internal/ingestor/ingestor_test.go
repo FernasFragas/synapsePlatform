@@ -9,6 +9,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/suite"
+	"go.uber.org/mock/gomock"
 )
 
 const (
@@ -91,6 +92,14 @@ func validEvent() *ingestor.BaseEvent {
 	}
 }
 
+func validMessage() *ingestor.DeviceMessage {
+	return &ingestor.DeviceMessage{
+		DeviceID:  IngestorTestDeviceID,
+		Type:      IngestorTestEventType,
+		Timestamp: time.Now(),
+	}
+}
+
 func (s *IngestorTestSuite) TestIngest_HappyPath_AcksAfterStore() {
 	ctx, cancel := context.WithCancel(context.Background())
 	ack := utilstest.NewAck(s.T())
@@ -149,4 +158,31 @@ func (s *IngestorTestSuite) TestIngest_TerminalFailureStoreFails_DoesNotAck() {
 	ing := ingestor.New(ingestor.Config{}, s.processor, s.storer, s.transformer, s.failures)
 	s.Require().NoError(ing.Ingest(ctx))
 	ack.RequireCalls(0)
+}
+
+func (s *IngestorTestSuite) TestIngest_BatchTransientStoreError_DoesNotAck() {
+	ctx, cancel := context.WithCancel(context.Background())
+	ack1 := utilstest.NewAck(s.T())
+	ack2 := utilstest.NewAck(s.T())
+
+	s.processor.WithDeliveryAndAck(validMessage(), ack1.Handler())
+	s.processor.WithDeliveryAndAck(validMessage(), ack2.Handler())
+	s.transformer.WithResult(validEvent())
+	s.transformer.WithResult(validEvent())
+	s.storer.MockMessageStorer.EXPECT().
+		StoreBatch(gomock.Any(), gomock.Any()).
+		DoAndReturn(func(context.Context, []*ingestor.BaseEvent) error {
+			cancel()
+			return errors.New("database unavailable")
+		})
+	s.failures.ExpectNoFailure()
+
+	ing := ingestor.New(ingestor.Config{
+		BatchSize:  2,
+		NumWorkers: 1,
+	}, s.processor, s.storer, s.transformer, s.failures)
+
+	s.Require().NoError(ing.Ingest(ctx))
+	ack1.RequireCalls(0)
+	ack2.RequireCalls(0)
 }

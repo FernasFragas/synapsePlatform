@@ -43,7 +43,7 @@ func NewProcessor(poller MessagePoller) *Processor {
 func (p *Processor) ProcessData(ctx context.Context) (*Delivery, error) {
 	delivery, err := p.poller.PollMessage(ctx)
 	if err != nil {
-		return nil, ProcessorError{
+		return delivery, ProcessorError{
 			TypeOfError:            ErrPollingMsg,
 			ErrorOccurredBecauseOf: ErrFailedToPollMsg,
 			Field:                  "delivery",

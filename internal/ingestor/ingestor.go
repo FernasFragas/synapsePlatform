@@ -491,11 +491,10 @@ func (i *Ingestor) ack(ctx context.Context, delivery *Delivery, stage string) {
 }
 
 func resetTicker(ticker *time.Ticker, timeout time.Duration) {
-	if !ticker.Stop() {
-		select {
-		case <-ticker.C:
-		default:
-		}
+	ticker.Stop()
+	select {
+	case <-ticker.C:
+	default:
 	}
 
 	ticker.Reset(timeout)

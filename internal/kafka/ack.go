@@ -23,10 +23,14 @@ import (
 // redelivery. This is what makes the closure-per-message API safe under the
 // out-of-order completion of the batch and worker-pool paths.
 type OffsetCommitter struct {
-	reader *kafka.Reader
+	reader messageCommitter
 
 	mu    sync.Mutex
 	parts map[int]*partitionProgress
+}
+
+type messageCommitter interface {
+	CommitMessages(ctx context.Context, msgs ...kafka.Message) error
 }
 
 type partitionProgress struct {

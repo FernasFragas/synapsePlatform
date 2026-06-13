@@ -2,7 +2,6 @@ package utilstest
 
 import (
 	"context"
-	"errors"
 	"synapsePlatform/internal/ingestor"
 	mock_ingestor "synapsePlatform/internal/utilstest/mocksgen/ingestor"
 	"testing"
@@ -25,7 +24,7 @@ func NewDataProcessor(t *testing.T) *DataProcessor {
 
 // WithError sets the mock to return an error.
 func (r *DataProcessor) WithError(err error) *DataProcessor {
-	r.MockDataProcessor.EXPECT().ProcessData(gomock.Any()).Return(nil, ingestor.AckHandler(nil), err)
+	r.MockDataProcessor.EXPECT().ProcessData(gomock.Any()).Return(nil, err)
 
 	return r
 }
@@ -33,9 +32,9 @@ func (r *DataProcessor) WithError(err error) *DataProcessor {
 func (r *DataProcessor) WithCancel(cancel context.CancelFunc) *DataProcessor {
 	r.MockDataProcessor.EXPECT().
 		ProcessData(gomock.Any()).
-		DoAndReturn(func(_ context.Context) (*ingestor.DeviceMessage, ingestor.AckHandler, error) {
+		DoAndReturn(func(_ context.Context) (*ingestor.Delivery, error) {
 			cancel()
-			return nil, nil, errors.New("cancelled")
+			return nil, context.Canceled
 		})
 
 	return r
@@ -43,16 +42,17 @@ func (r *DataProcessor) WithCancel(cancel context.CancelFunc) *DataProcessor {
 
 // WithResult sets the mock to return the given messages.
 func (r *DataProcessor) WithResult(messages *ingestor.DeviceMessage) *DataProcessor {
-	r.MockDataProcessor.EXPECT().ProcessData(gomock.Any()).Return(messages, ingestor.AckHandler(nil), nil)
+	return r.WithDelivery(&ingestor.Delivery{Message: messages})
+}
 
-	return r
+// WithDeliveryAndAck returns the given message with a specific ack handler.
+func (r *DataProcessor) WithDeliveryAndAck(messages *ingestor.DeviceMessage, ack ingestor.AckHandler) *DataProcessor {
+	return r.WithDelivery(&ingestor.Delivery{Message: messages, Ack: ack})
 }
 
 // WithResultAndAck returns the given message with a specific ack handler.
 func (r *DataProcessor) WithResultAndAck(messages *ingestor.DeviceMessage, ack ingestor.AckHandler) *DataProcessor {
-	r.MockDataProcessor.EXPECT().ProcessData(gomock.Any()).Return(messages, ack, nil)
-
-	return r
+	return r.WithDeliveryAndAck(messages, ack)
 }
 
 func (r *DataProcessor) WithDelivery(delivery *ingestor.Delivery) *DataProcessor {
