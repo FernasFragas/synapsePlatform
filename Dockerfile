@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 
 # ── Build stage ───────────────────────────────────────────────────────────────
-FROM golang:1.25-alpine AS builder
+FROM golang:1.26-alpine AS builder
 
 WORKDIR /app
 
@@ -15,7 +15,8 @@ COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build \
       -ldflags="-w -s" \
       -o bin/synapsePlatform \
-      ./cmd/
+      ./cmd/ \
+ && mkdir -p /app/data
 
 # ── Runtime stage ─────────────────────────────────────────────────────────────
 # distroless/static has no shell, no package manager, minimal attack surface.
@@ -26,6 +27,8 @@ WORKDIR /app
 COPY --from=builder /app/bin/synapsePlatform .
 
 EXPOSE 8080
+
+COPY --from=builder --chown=nonroot:nonroot /app/data /app/data
 
 USER nonroot:nonroot
 

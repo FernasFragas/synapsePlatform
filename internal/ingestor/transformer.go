@@ -11,28 +11,42 @@ import (
 
 // MessageTransformer converts DeviceMessage to BaseEvent.
 type MessageTransformer struct {
-	domainsSupported []DataTypes
+	dataTypesSupported []DataTypes
+	domainsSupported   []Domains
 }
 
 // NewMessageTransformer creates a transformer.
-func NewMessageTransformer(domains []DataTypes) *MessageTransformer {
+func NewMessageTransformer(dataTypes []DataTypes) *MessageTransformer {
+	// Derive the unique set of domains from the supported data types
+	domainSet := make(map[Domains]struct{})
+	for _, dt := range dataTypes {
+		if domain, ok := typeToDomain[dt]; ok {
+			domainSet[domain] = struct{}{}
+		}
+	}
+	domains := make([]Domains, 0, len(domainSet))
+	for d := range domainSet {
+		domains = append(domains, d)
+	}
+
 	return &MessageTransformer{
-		domainsSupported: domains,
+		dataTypesSupported: dataTypes,
+		domainsSupported:   domains,
 	}
 }
 
 // Transform converts a device message to a domain event.
 func (t *MessageTransformer) Transform(ctx context.Context, msg *DeviceMessage) (*BaseEvent, error) {
-	domain := ParseDataType(msg.Type)
+	domain := ParseDomainType(msg.Type)
 
 	if !t.isDomainSupported(domain) {
-		return nil, ProcessorError{ // todo fix fields and
+		return nil, ProcessorError{
 			TypeOfError:            ErrValidatingData,
 			ErrorOccurredBecauseOf: ErrFailedToValidateData,
 			Field:                  "domain",
 			Expected:               "DataTypes",
 			Got:                    domain,
-			Err:                    fmt.Errorf("unsupported domain: %s (supported: %v)", domain, t.domainsSupported),
+			Err:                    fmt.Errorf("%w: unsupported domain %s (supported: %v)", ErrUnknownDataType, domain, t.dataTypesSupported),
 		}
 	}
 
@@ -74,8 +88,8 @@ func (t *MessageTransformer) Transform(ctx context.Context, msg *DeviceMessage) 
 }
 
 // isDomainSupported checks if the domain is in the supported list.
-func (t *MessageTransformer) isDomainSupported(domain DataTypes) bool {
-	if len(t.domainsSupported) == 0 {
+func (t *MessageTransformer) isDomainSupported(domain Domains) bool {
+	if len(t.dataTypesSupported) == 0 {
 		return true
 	}
 

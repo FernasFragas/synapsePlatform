@@ -14,8 +14,6 @@ import (
 	"github.com/stretchr/testify/suite"
 )
 
-func noopMiddleware(next http.Handler) http.Handler { return next }
-
 type MiddlewareTestSuite struct {
 	suite.Suite
 
@@ -32,8 +30,20 @@ func (s *MiddlewareTestSuite) SetupTest() {
 	s.reader = utilstest.NewEventReader(s.T())
 }
 
+func (s *MiddlewareTestSuite) newTestServer() *api.Server {
+	return api.NewServer(
+		testServerConfig(),
+		s.reader,
+		nil,
+		s.validator,
+		noopMiddleware,
+		health.NewChecker(time.Second),
+		nil,
+	)
+}
+
 func (s *MiddlewareTestSuite) TestAuthenticate_NoAuthHeader_Returns401WithWWWAuthenticate() {
-	srv := api.NewServer(testServerConfig(), s.reader, s.validator, noopMiddleware, health.NewChecker(time.Second))
+	srv := s.newTestServer()
 	req := httptest.NewRequest(http.MethodGet, "/v1/events", nil)
 	rec := httptest.NewRecorder()
 
@@ -44,7 +54,7 @@ func (s *MiddlewareTestSuite) TestAuthenticate_NoAuthHeader_Returns401WithWWWAut
 }
 
 func (s *MiddlewareTestSuite) TestAuthenticate_WrongScheme_Returns401() {
-	srv := api.NewServer(testServerConfig(), s.reader, s.validator, noopMiddleware, health.NewChecker(time.Second))
+	srv := s.newTestServer()
 	req := httptest.NewRequest(http.MethodGet, "/v1/events", nil)
 	req.Header.Set("Authorization", "Basic dXNlcjpwYXNz")
 	rec := httptest.NewRecorder()
@@ -61,7 +71,7 @@ func (s *MiddlewareTestSuite) TestAuthenticate_BearerLowercase_IsAccepted() {
 	})
 	s.reader.WithEvents(nil)
 
-	srv := api.NewServer(testServerConfig(), s.reader, s.validator, noopMiddleware, health.NewChecker(time.Second))
+	srv := s.newTestServer()
 	req := httptest.NewRequest(http.MethodGet, "/v1/events", nil)
 	req.Header.Set("Authorization", "bearer some-token")
 	rec := httptest.NewRecorder()
@@ -77,7 +87,7 @@ func (s *MiddlewareTestSuite) TestAuthenticate_InvalidToken_Returns401WithWWWAut
 		ErrorOccurredBecauseOf: auth.ErrTokenSignatureInvalid,
 	})
 
-	srv := api.NewServer(testServerConfig(), s.reader, s.validator, noopMiddleware, health.NewChecker(time.Second))
+	srv := s.newTestServer()
 	req := httptest.NewRequest(http.MethodGet, "/v1/events", nil)
 	req.Header.Set("Authorization", "Bearer tampered.token.here")
 	rec := httptest.NewRecorder()
@@ -94,7 +104,7 @@ func (s *MiddlewareTestSuite) TestAuthenticate_ExpiredToken_Returns401() {
 		ErrorOccurredBecauseOf: auth.ErrTokenExpired,
 	})
 
-	srv := api.NewServer(testServerConfig(), s.reader, s.validator, noopMiddleware, health.NewChecker(time.Second))
+	srv := s.newTestServer()
 	req := httptest.NewRequest(http.MethodGet, "/v1/events", nil)
 	req.Header.Set("Authorization", "Bearer expired.token")
 	rec := httptest.NewRecorder()
@@ -109,7 +119,7 @@ func (s *MiddlewareTestSuite) TestAuthenticate_ValidToken_PassesIdentityInContex
 	s.validator.WithIdentity(expected)
 	s.reader.WithEvents(nil)
 
-	srv := api.NewServer(testServerConfig(), s.reader, s.validator, noopMiddleware, health.NewChecker(time.Second))
+	srv := s.newTestServer()
 	req := httptest.NewRequest(http.MethodGet, "/v1/events", nil)
 	req.Header.Set("Authorization", "Bearer valid.token")
 	rec := httptest.NewRecorder()

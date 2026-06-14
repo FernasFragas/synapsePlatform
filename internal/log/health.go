@@ -24,13 +24,13 @@ func (p *HealthProbe) Check(ctx context.Context) error {
 	elapsed := time.Since(start)
 
 	if err != nil {
-		p.logger.Warn("health check failed",
+		p.logger.WarnContext(ctx, "health check failed",
 			"probe", p.Name(),
 			"duration", elapsed,
 			"error", err,
 		)
 	} else {
-		p.logger.Debug("health check passed",
+		p.logger.DebugContext(ctx, "health check passed",
 			"probe", p.Name(),
 			"duration", elapsed,
 		)

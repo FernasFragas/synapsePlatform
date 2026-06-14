@@ -1,0 +1,46 @@
+server:
+  address: ":8080"
+  timeouts:
+    read_header: 5s
+    read: 10s
+    write: 30s
+    idle: 120s
+  shutdown:
+    timeout: 10s
+    grace_period: 5s
+  cors:
+    allowed_origins:
+      - "http://localhost:3000"
+  rate_limit:
+    requests_per_second: 10
+    burst: 20
+
+auth:
+  jwt:
+    issuer: "https://auth.example.com"
+    audience: "synapse-platform-api"
+    secret: "your-256-bit-secret-replace-me!!"
+
+kafka:
+  brokers:
+    - "kafka:29092"
+  group_id: "synapse-platform-consumer"
+  topics:
+    - "ingestion.raw"
+  dlq_topic: "ingestion.dlq"
+  min_bytes: 100000
+  max_bytes: 100000000
+
+llm:
+  enabled: true
+  host: "http://ollama:11434"
+  model: "mistral:7b"
+  timeout: 60s
+  max_tokens: 512
+  temperature: 0.2
+
+database:
+  path: "data.db"
+
+tracing:
+  endpoint: "http://alloy:4318/v1/traces"

@@ -3,6 +3,7 @@ package ingestor
 import (
 	"context"
 	"fmt"
+	"time"
 )
 
 type FallbackFailureStorer struct {
@@ -11,9 +12,14 @@ type FallbackFailureStorer struct {
 }
 
 type FailedMessage struct {
-	Stage   string
-	Message *DeviceMessage
-	Err     error
+	ID           string
+	Stage        string
+	ErrorType    string
+	ErrorMessage string
+	RetryCount   int
+	Message      *DeviceMessage
+	Metadata     MessageMetadata
+	FailedAt     time.Time
 }
 
 func NewFallbackFailureStorer(primary, secondary FailureStorer) *FallbackFailureStorer {

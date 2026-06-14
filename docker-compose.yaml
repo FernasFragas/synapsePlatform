@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   zookeeper:
     image: confluentinc/cp-zookeeper:7.4.0
@@ -8,33 +6,116 @@ services:
       ZOOKEEPER_TICK_TIME: 2000
     ports:
       - "2181:2181"
+    healthcheck:
+      test: ["CMD-SHELL", "echo ruok | timeout 2 bash -c 'cat > /dev/tcp/localhost/2181'"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
 
   kafka:
     image: confluentinc/cp-kafka:7.4.0
     depends_on:
-      - zookeeper
+      zookeeper:
+        condition: service_healthy
     ports:
       - "9092:9092"
+    healthcheck:
+      test: [ "CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:9092" ]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 15s
     environment:
       KAFKA_BROKER_ID: 1
       KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      KAFKA_LISTENERS: INTERNAL://0.0.0.0:29092,EXTERNAL://0.0.0.0:9092
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka:29092,EXTERNAL://localhost:9092
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
 
   init-kafka:
     image: confluentinc/cp-kafka:7.4.0
     depends_on:
-      - kafka
+      kafka:
+        condition: service_healthy
     entrypoint: ['/bin/sh', '-c']
     command: >
       "
-      # Wait for Kafka to be ready
-      sleep 20 &&
-      
-      # Create topics
-      kafka-topics --create --topic ingestion.raw --partitions 10 --replication-factor 1 --if-not-exists --bootstrap-server kafka:9092 &&  
+      kafka-topics --create --topic ingestion.raw --partitions 10 --replication-factor 1 --if-not-exists --bootstrap-server kafka:9092 &&
       kafka-topics --create --topic ingestion.dlq --partitions 3 --replication-factor 1 --if-not-exists --bootstrap-server kafka:9092 &&
-      
       echo 'Kafka topics created successfully'
       "
     restart: "no"
+
+  alloy:
+    image: grafana/alloy:latest
+    ports:
+      - "4318:4318"
+      - "4317:4317"
+    command:
+      - run
+      - /etc/alloy/config.alloy
+    volumes:
+      - ./alloy-config.alloy:/etc/alloy/config.alloy:ro
+    env_file:
+      - path: .env
+        required: false
+    depends_on:
+      - synapse
+
+  ollama:
+    image: ollama/ollama:latest
+    ports:
+      - "11435:11434"
+    volumes:
+      - ollama-models:/root/.ollama
+    healthcheck:
+      test: [ "CMD", "ollama", "list" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  init-ollama:
+    image: ollama/ollama:latest
+    depends_on:
+      ollama:
+        condition: service_healthy
+    environment:
+      OLLAMA_HOST: "http://ollama:11434"
+    volumes:
+      - ollama-models:/root/.ollama
+    entrypoint: [ "/bin/sh", "-c" ]
+    command:
+      - |
+        set -e
+        for i in 1 2 3; do
+          ollama list | grep -q 'mistral:7b' && echo "Model already present" && exit 0
+          ollama pull mistral:7b && echo "Pulled successfully" && exit 0
+          echo "Attempt $$i failed, retrying in 10s..."
+          sleep 10
+        done
+        echo "Failed after 3 attempts"
+        exit 1
+    restart: "no"
+
+  synapse:
+    build: .
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./config-docker.yaml:/app/config.yaml:ro
+      - synapse-data:/app/data
+    depends_on:
+      kafka:
+        condition: service_started
+      ollama:
+        condition: service_healthy
+      init-ollama:
+        condition: service_completed_successfully
+
+volumes:
+  synapse-data:
+  ollama-models:

@@ -148,7 +148,7 @@ func (s *TransformerTestSuite) TestTransform_EnergyMeterType_DomainIsEnergyMeter
 	event, err := transformer.Transform(nil, energyMeterMsg())
 
 	s.Require().NoError(err)
-	s.Equal(ingestor.DataTypeEnergyMeter.String(), event.Domain)
+	s.Equal(string(ingestor.EnergyDomain), event.Domain)
 	s.Equal(string(ingestor.DataTypeEnergyMeter), event.EventType)
 }
 
@@ -158,7 +158,8 @@ func (s *TransformerTestSuite) TestTransform_FinancialStreamType_DomainIsFinanci
 	event, err := transformer.Transform(nil, financialMsg())
 
 	s.Require().NoError(err)
-	s.Equal(ingestor.DataTypeFinancialStream.String(), event.Domain)
+	s.Equal(string(ingestor.FinanceDomain), event.Domain)
+	s.Equal(ingestor.DataTypeFinancialStream.String(), event.EventType)
 }
 
 func (s *TransformerTestSuite) TestTransform_EnvironmentalSensorType_DomainIsEnvironmental() {
@@ -167,7 +168,8 @@ func (s *TransformerTestSuite) TestTransform_EnvironmentalSensorType_DomainIsEnv
 	event, err := transformer.Transform(nil, environmentalMsg())
 
 	s.Require().NoError(err)
-	s.Equal(ingestor.DataTypeEnvironmentalSensor.String(), event.Domain)
+	s.Equal(string(ingestor.EnergyDomain), event.Domain)
+	s.Equal(ingestor.DataTypeEnvironmentalSensor.String(), event.EventType)
 }
 
 func (s *TransformerTestSuite) TestTransform_UnknownMsgType_MapsToUnknownDomain() {
@@ -182,7 +184,8 @@ func (s *TransformerTestSuite) TestTransform_UnknownMsgType_MapsToUnknownDomain(
 	event, err := transformer.Transform(nil, msg)
 
 	s.Require().NoError(err, "unknown types should map to DataTypeUnknown without error")
-	s.Equal(ingestor.DataTypeUnknown.String(), event.Domain)
+	s.Equal(string(ingestor.UnknownDomain), event.Domain)
+	s.Equal(ingestor.DataTypeUnknown.String(), event.EntityType)
 }
 
 func (s *TransformerTestSuite) TestTransform_EmptyMetrics_EnergyMeter_ValidationFails() {

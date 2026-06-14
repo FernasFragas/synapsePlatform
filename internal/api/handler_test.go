@@ -22,8 +22,9 @@ import (
 type HandlerTestSuite struct {
 	suite.Suite
 
-	validator *utilstest.TokenValidator
-	reader    *utilstest.EventReader
+	validator  *utilstest.TokenValidator
+	reader     *utilstest.EventReader
+	summarizer *utilstest.Summarizer
 }
 
 func TestHandlerSuite(t *testing.T) {
@@ -33,6 +34,35 @@ func TestHandlerSuite(t *testing.T) {
 func (s *HandlerTestSuite) SetupTest() {
 	s.validator = utilstest.NewTokenValidator(s.T())
 	s.reader = utilstest.NewEventReader(s.T())
+	s.summarizer = utilstest.NewSummarizer(s.T())
+}
+
+func (s *HandlerTestSuite) newTestServer() *api.Server {
+	return api.NewServer(
+		testServerConfig(),
+		s.reader,
+		nil,
+		s.validator,
+		noopMiddleware,
+		health.NewChecker(time.Second),
+		nil,
+	)
+}
+
+func (s *HandlerTestSuite) newTestServerWithSummarizer() *api.Server {
+	return api.NewServer(
+		testServerConfig(),
+		s.reader,
+		s.summarizer, // real mock
+		s.validator,
+		noopMiddleware,
+		health.NewChecker(time.Second),
+		nil,
+	)
+}
+
+var noopMiddleware api.Middleware = func(next http.Handler) http.Handler {
+	return next
 }
 
 // --- helpers ---
@@ -53,7 +83,7 @@ func (s *HandlerTestSuite) TestListEvents_ValidTokenWithScope_Returns200() {
 	s.withScope("read:events")
 	s.reader.WithEvents([]*ingestor.BaseEvent{validBaseEvent()})
 
-	srv := api.NewServer(testServerConfig(), s.reader, s.validator, noopMiddleware, health.NewChecker(time.Second))
+	srv := s.newTestServer()
 	rec := httptest.NewRecorder()
 	srv.ServeHTTP(rec, s.authorizedRequest(http.MethodGet, "/v1/events"))
 
@@ -73,7 +103,7 @@ func (s *HandlerTestSuite) TestListEvents_EmptyStore_Returns200WithEmptyArray() 
 	s.withScope("read:events")
 	s.reader.WithEvents([]*ingestor.BaseEvent{})
 
-	srv := api.NewServer(testServerConfig(), s.reader, s.validator, noopMiddleware, health.NewChecker(time.Second))
+	srv := s.newTestServer()
 	rec := httptest.NewRecorder()
 	srv.ServeHTTP(rec, s.authorizedRequest(http.MethodGet, "/v1/events"))
 
@@ -83,7 +113,7 @@ func (s *HandlerTestSuite) TestListEvents_EmptyStore_Returns200WithEmptyArray() 
 func (s *HandlerTestSuite) TestListEvents_MissingScope_Returns403() {
 	s.withScope() // valid token, no scopes
 
-	srv := api.NewServer(testServerConfig(), s.reader, s.validator, noopMiddleware, health.NewChecker(time.Second))
+	srv := s.newTestServer()
 	rec := httptest.NewRecorder()
 	srv.ServeHTTP(rec, s.authorizedRequest(http.MethodGet, "/v1/events"))
 
@@ -93,7 +123,7 @@ func (s *HandlerTestSuite) TestListEvents_MissingScope_Returns403() {
 func (s *HandlerTestSuite) TestListEvents_WrongScope_Returns403() {
 	s.withScope("write:events") // wrong scope
 
-	srv := api.NewServer(testServerConfig(), s.reader, s.validator, noopMiddleware, health.NewChecker(time.Second))
+	srv := s.newTestServer()
 	rec := httptest.NewRecorder()
 	srv.ServeHTTP(rec, s.authorizedRequest(http.MethodGet, "/v1/events"))
 
@@ -104,7 +134,7 @@ func (s *HandlerTestSuite) TestListEvents_StorageError_Returns500() {
 	s.withScope("read:events")
 	s.reader.WithListError(errors.New("db connection lost"))
 
-	srv := api.NewServer(testServerConfig(), s.reader, s.validator, noopMiddleware, health.NewChecker(time.Second))
+	srv := s.newTestServer()
 	rec := httptest.NewRecorder()
 	srv.ServeHTTP(rec, s.authorizedRequest(http.MethodGet, "/v1/events"))
 
@@ -118,7 +148,7 @@ func (s *HandlerTestSuite) TestGetEvent_ValidTokenWithScope_Returns200() {
 	s.withScope("read:events")
 	s.reader.WithEvent(event)
 
-	srv := api.NewServer(testServerConfig(), s.reader, s.validator, noopMiddleware, health.NewChecker(time.Second))
+	srv := s.newTestServer()
 	rec := httptest.NewRecorder()
 	srv.ServeHTTP(rec, s.authorizedRequest(http.MethodGet, "/v1/events/"+event.EventID.String()))
 
@@ -133,7 +163,7 @@ func (s *HandlerTestSuite) TestGetEvent_ValidTokenWithScope_Returns200() {
 func (s *HandlerTestSuite) TestGetEvent_MissingScope_Returns403() {
 	s.withScope("write:events")
 
-	srv := api.NewServer(testServerConfig(), s.reader, s.validator, noopMiddleware, health.NewChecker(time.Second))
+	srv := s.newTestServer()
 	rec := httptest.NewRecorder()
 	srv.ServeHTTP(rec, s.authorizedRequest(http.MethodGet, "/v1/events/some-id"))
 
@@ -144,7 +174,7 @@ func (s *HandlerTestSuite) TestGetEvent_NotFound_Returns404() {
 	s.withScope("read:events")
 	s.reader.WithGetError(ingestor.ErrEventNotFound)
 
-	srv := api.NewServer(testServerConfig(), s.reader, s.validator, noopMiddleware, health.NewChecker(time.Second))
+	srv := s.newTestServer()
 	rec := httptest.NewRecorder()
 	srv.ServeHTTP(rec, s.authorizedRequest(http.MethodGet, "/v1/events/missing-id"))
 
@@ -156,9 +186,68 @@ func (s *HandlerTestSuite) TestGetEvent_StorageError_Returns500() {
 	// A non-not-found error — should be 500, not 404
 	s.reader.WithGetError(errors.New("db timeout"))
 
-	srv := api.NewServer(testServerConfig(), s.reader, s.validator, noopMiddleware, health.NewChecker(time.Second))
+	srv := s.newTestServer()
 	rec := httptest.NewRecorder()
 	srv.ServeHTTP(rec, s.authorizedRequest(http.MethodGet, "/v1/events/some-id"))
+
+	s.Equal(http.StatusInternalServerError, rec.Code)
+}
+
+// --- GET /summary ---
+
+func (s *HandlerTestSuite) TestGetSummary_ValidTokenWithScope_Returns200() {
+	s.withScope("read:events")
+
+	report := &api.Report{
+		Domain:     "energy",
+		WindowFrom: time.Now().UTC().Add(-24 * time.Hour),
+		Model:      "mistral:7b",
+		Content:    "There were 42 energy events.",
+		CreatedAt:  time.Now().UTC(),
+	}
+	s.summarizer.WithReport(report)
+
+	srv := s.newTestServerWithSummarizer()
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, s.authorizedRequest(http.MethodGet, "/v1/summary?domain=energy"))
+
+	s.Equal(http.StatusOK, rec.Code)
+	s.Equal("application/json", rec.Header().Get("Content-Type"))
+
+	var body map[string]any
+	s.Require().NoError(json.NewDecoder(rec.Body).Decode(&body))
+	s.Equal("energy", body["domain"])
+	s.Equal("mistral:7b", body["model"])
+	s.Equal("There were 42 energy events.", body["content"])
+}
+
+func (s *HandlerTestSuite) TestGetSummary_MissingScope_Returns403() {
+	s.withScope() // no scopes
+
+	srv := s.newTestServerWithSummarizer()
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, s.authorizedRequest(http.MethodGet, "/v1/summary"))
+
+	s.Equal(http.StatusForbidden, rec.Code)
+}
+
+func (s *HandlerTestSuite) TestGetSummary_SummarizerNil_Returns503() {
+	s.withScope("read:events")
+	// Use the old newTestServer which passes nil for summarizer
+	srv := s.newTestServer()
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, s.authorizedRequest(http.MethodGet, "/v1/summary"))
+
+	s.Equal(http.StatusServiceUnavailable, rec.Code)
+}
+
+func (s *HandlerTestSuite) TestGetSummary_SummarizeError_Returns500() {
+	s.withScope("read:events")
+	s.summarizer.WithError(errors.New("ollama connection refused"))
+
+	srv := s.newTestServerWithSummarizer()
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, s.authorizedRequest(http.MethodGet, "/v1/summary"))
 
 	s.Equal(http.StatusInternalServerError, rec.Code)
 }

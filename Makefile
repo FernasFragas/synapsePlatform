@@ -6,7 +6,24 @@
 # Variables
 APP_NAME := synapsePlatform
 MAIN_PATH := ./cmd/
-DOCKER_COMPOSE := docker-compose
+DOCKER_COMPOSE ?= $(shell if command -v docker-compose >/dev/null 2>&1; then echo docker-compose; else echo docker compose; fi)
+KAFKA_SERVICE ?= kafka
+KAFKA_BOOTSTRAP ?= localhost:9092
+KAFKA_TOPIC ?= ingestion.raw
+KAFKA_SAMPLE_FILES ?= test/*Ex.json test/env-sensor.json
+OLLAMA_HOST ?= http://localhost:11434
+OLLAMA_MODEL ?= mistral:7b
+API_URL ?= http://localhost:8080
+SUMMARY_DOMAIN ?= energy
+SUMMARY_SINCE ?=
+DB_PATH ?= data.db
+JWT_SECRET ?= your-256-bit-secret-replace-me!!
+JWT_ISSUER ?= https://auth.example.com
+JWT_AUDIENCE ?= synapse-platform-api
+JWT_SUB ?= local-user
+JWT_CLIENT_ID ?= makefile
+JWT_SCOPE ?= read:events
+JWT_TOKEN ?=
 
 ## help: Display this help message
 help:
@@ -114,10 +131,18 @@ kafka-create-topic:
 ## kafka-test-message: Send a test message to Kafka
 kafka-test-message:
 	@echo "📤 Sending test message to Kafka..."
-	@echo '{"device_id":"test-device-001","type":"temperature_sensor","timestamp":"'$$(date -u +"%Y-%m-%dT%H:%M:%SZ")'","metrics":{"temperature_c":22.5,"humidity":45.2}}' | \
-		docker exec -i synapseplatform-kafka-1 kafka-console-producer \
-		--broker-list localhost:9092 --topic ingestion.raw
+	@printf '%s\n' '{"device_id":"test-device-001","type":"temperature_sensor","timestamp":"'$$(date -u +"%Y-%m-%dT%H:%M:%SZ")'","metrics":{"temperature_c":22.5,"humidity_percent":45.2,"air_quality_index":31}}' | \
+		$(DOCKER_COMPOSE) exec -T $(KAFKA_SERVICE) kafka-console-producer \
+		--bootstrap-server $(KAFKA_BOOTSTRAP) --topic $(KAFKA_TOPIC)
 	@echo "✅ Test message sent"
+
+## summary-seed-event: Send a valid current energy event so /v1/summary has data
+summary-seed-event:
+	@echo "🌱 Sending current energy event to Kafka..."
+	@printf '%s\n' '{"device_id":"summary-meter-001","type":"energy_meter","timestamp":"'$$(date -u +"%Y-%m-%dT%H:%M:%SZ")'","metrics":{"power_w":120.5,"energy_wh":500.0,"voltage_v":220.0,"current_ma":455.0}}' | \
+		$(DOCKER_COMPOSE) exec -T $(KAFKA_SERVICE) kafka-console-producer \
+		--bootstrap-server $(KAFKA_BOOTSTRAP) --topic $(KAFKA_TOPIC)
+	@echo "✅ Current energy event sent"
 
 ## kafka-test-file: Send a specific JSON file as a single message
 kafka-test-file:
@@ -133,11 +158,15 @@ kafka-test-file:
 ## kafka-send-sample: Send sample device messages from test directory
 kafka-send-sample:
 	@echo "📤 Sending sample messages..."
-	@for file in test/*.json; do \
+	@for file in $(KAFKA_SAMPLE_FILES); do \
+		if [ ! -f "$$file" ]; then \
+			echo "⚠️  Skipping missing file: $$file"; \
+			continue; \
+		fi; \
 		echo "Sending $$file..."; \
-		cat $$file | jq -c . | docker exec -i synapseplatform-kafka-1 kafka-console-producer \
-			--broker-list localhost:9092 --topic ingestion.raw; \
-		sleep 1; \
+		payload=$$(tr -d '\n' < "$$file"); \
+		printf '%s\n' "$$payload" | $(DOCKER_COMPOSE) exec -T $(KAFKA_SERVICE) kafka-console-producer \
+			--bootstrap-server $(KAFKA_BOOTSTRAP) --topic $(KAFKA_TOPIC); \
 	done
 	@echo "✅ All sample messages sent"
 
@@ -148,6 +177,81 @@ kafka-console:
 		--bootstrap-server localhost:9092 \
 		--topic ingestion.raw \
 		--from-beginning
+
+## ollama-check: Verify local Ollama is reachable and can generate with the configured model
+ollama-check:
+	@echo "🔎 Checking Ollama at $(OLLAMA_HOST)..."
+	@if ! curl -fsS "$(OLLAMA_HOST)/api/tags" >/dev/null; then \
+		echo "❌ Ollama is not reachable at $(OLLAMA_HOST)"; \
+		echo "   Start native Ollama with: ollama serve"; \
+		echo "   Or Docker Ollama with: docker compose up -d ollama init-ollama"; \
+		exit 1; \
+	fi
+	@echo "📋 Checking model $(OLLAMA_MODEL)..."
+	@if ! curl -fsS "$(OLLAMA_HOST)/api/tags" | grep -q '"name":"$(OLLAMA_MODEL)"'; then \
+		echo "❌ Model $(OLLAMA_MODEL) is not available"; \
+		echo "   Pull it with: OLLAMA_HOST=$(OLLAMA_HOST) ollama pull $(OLLAMA_MODEL)"; \
+		exit 1; \
+	fi
+	@echo "🧠 Running test generation..."
+	@response=$$(printf '{"model":"$(OLLAMA_MODEL)","prompt":"Reply with exactly: synapse-ok","stream":false,"options":{"temperature":0,"num_predict":8}}' | \
+		curl -fsS "$(OLLAMA_HOST)/api/generate" \
+			-H "Content-Type: application/json" \
+			-d @-); \
+	echo "$$response" | grep -q '"response"' || { \
+		echo "❌ Ollama did not return a generation response"; \
+		echo "$$response"; \
+		exit 1; \
+	}; \
+	answer=$$(printf '%s\n' "$$response" | sed -n 's/.*"response":"\([^"]*\)".*/\1/p'); \
+	echo "💬 Ollama answer: $$answer"; \
+	echo "✅ Ollama generation works with $(OLLAMA_MODEL)"
+
+## summary-check: Call the running API summary endpoint and print the summary response
+summary-check:
+	@echo "🔎 Calling summary endpoint at $(API_URL)/v1/summary..."
+	@if [ -z "$(JWT_TOKEN)" ] && ! command -v openssl >/dev/null 2>&1; then \
+		echo "❌ openssl is required to generate a local JWT"; \
+		echo "   Or pass an existing token: make summary-check JWT_TOKEN=..."; \
+		exit 1; \
+	fi
+	@token="$(JWT_TOKEN)"; \
+	if [ -z "$$token" ]; then \
+		b64url() { openssl base64 -A | tr '+/' '-_' | tr -d '='; }; \
+		exp=$$(date -u -v+1H +%s 2>/dev/null || date -u -d '+1 hour' +%s); \
+		header=$$(printf '%s' '{"alg":"HS256","typ":"JWT"}' | b64url); \
+		payload=$$(printf '{"iss":"%s","aud":"%s","sub":"%s","client_id":"%s","scope":"%s","exp":%s}' \
+			"$(JWT_ISSUER)" "$(JWT_AUDIENCE)" "$(JWT_SUB)" "$(JWT_CLIENT_ID)" "$(JWT_SCOPE)" "$$exp" | b64url); \
+		signing_input="$$header.$$payload"; \
+		signature=$$(printf '%s' "$$signing_input" | openssl dgst -sha256 -hmac "$(JWT_SECRET)" -binary | b64url); \
+		token="$$signing_input.$$signature"; \
+	fi; \
+	url="$(API_URL)/v1/summary"; \
+	separator="?"; \
+	if [ -n "$(SUMMARY_DOMAIN)" ]; then \
+		url="$$url$${separator}domain=$(SUMMARY_DOMAIN)"; \
+		separator="&"; \
+	fi; \
+	if [ -n "$(SUMMARY_SINCE)" ]; then \
+		url="$$url$${separator}since=$(SUMMARY_SINCE)"; \
+	fi; \
+	response=$$(curl -fsS "$$url" -H "Authorization: Bearer $$token"); \
+	echo "💬 Summary response:"; \
+	echo "$$response"
+
+## summary-clear-cache: Delete cached summary responses from the local SQLite database
+summary-clear-cache:
+	@if [ ! -f "$(DB_PATH)" ]; then \
+		echo "⚠️  Database not found at $(DB_PATH)"; \
+		exit 0; \
+	fi
+	@if command -v sqlite3 >/dev/null 2>&1; then \
+		sqlite3 "$(DB_PATH)" "DELETE FROM summaries;"; \
+		echo "✅ Summary cache cleared from $(DB_PATH)"; \
+	else \
+		echo "❌ sqlite3 is required to clear the summary cache"; \
+		exit 1; \
+	fi
 
 ## sqlc-generate: Generate sqlc code from SQL files
 sqlc-generate:
@@ -257,3 +361,54 @@ run-with-logs:
 	@echo "🚀 Starting application with log capture..."
 	@echo "📝 Logs will be saved to: performance-reports/app-logs-$$(date +%Y%m%d-%H%M%S).log"
 	@go run $(MAIN_PATH) > performance-reports/app-logs-$$(date +%Y%m%d-%H%M%S).log 2>&1
+
+## grafana-up: Start full stack with Grafana Cloud metrics
+grafana-up:
+	$(DOCKER_COMPOSE) --profile monitoring up -d --build
+
+## grafana-down: Stop full stack
+grafana-down:
+	$(DOCKER_COMPOSE) --profile monitoring down
+
+## infra-only: Start infra + Alloy for GoLand-run app (no synapse container)
+infra-only:
+	@echo "🚀 Starting infra (Kafka, Zookeeper) for GoLand..."
+	$(DOCKER_COMPOSE) up -d kafka zookeeper init-kafka
+	@echo "📡 Starting Alloy without its synapse dependency..."
+	$(DOCKER_COMPOSE) up -d --no-deps alloy
+	@echo "✅ Infra + Alloy up. Run the app from GoLand on :8080"
+
+## infra-down: Stop infra + Alloy
+infra-down:
+	@echo "🛑 Stopping infra + Alloy..."
+	$(DOCKER_COMPOSE) stop kafka zookeeper init-kafka alloy
+	@echo "✅ Stopped"
+
+## e2e-test: Run end-to-end tests against Docker Compose stack
+## e2e-test: Full end-to-end test with model readiness check
+e2e-test:
+	@echo "🚀 Starting e2e test environment..."
+	docker compose down -v
+	docker compose up -d --build
+	@echo "⏳ Waiting for Ollama model (port 11435) — this takes ~90s on first pull..."
+	@for i in $$(seq 1 120); do \
+		if curl -s http://localhost:11435/api/tags | grep -q "mistral:7b"; then \
+			echo "✅ Model mistral:7b ready"; \
+			break; \
+		fi; \
+		if [ $$i -eq 120 ]; then \
+			echo "❌ Timeout: model never appeared after 10 minutes"; \
+			echo "init-ollama logs:"; \
+			docker compose logs init-ollama --tail 20; \
+			exit 1; \
+		fi; \
+		echo "   attempt $$i/120 — still waiting..."; \
+		sleep 5; \
+	done
+	@echo "⏳ Giving synapse a few seconds to finish startup..."
+	@sleep 5
+	JWT_SECRET="${JWT_SECRET:-your-256-bit-secret-replace-me!!}" \
+	E2E_API_URL=http://localhost:8080 \
+	E2E_OLLAMA_URL=http://localhost:11435 \
+	go test -v -timeout 300s -tags e2e ./test/e2e/...
+	docker compose down

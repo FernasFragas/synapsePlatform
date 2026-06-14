@@ -33,6 +33,14 @@ kafka:
   min_bytes: 100000      # 10KB
   max_bytes: 100000000   # 100MB
 
+llm:
+  enabled: true
+  host: "http://localhost:11434"
+  model: "mistral:7b"
+  timeout: 60s
+  max_tokens: 512
+  temperature: 0.2
+
 database:
   path: "data.db"
 
@@ -48,8 +56,8 @@ log:
 #tracing:
 #  endpoint: "stdout"
 # Send to Jaeger/Tempo/Collector via OTLP
-tracing:
-  endpoint: "http://localhost:4318/v1/traces"
-# Disable tracing entirely (no-op, zero overhead)
 #tracing:
-#  endpoint: ""
+#  endpoint: "http://localhost:4318/v1/traces"
+# Disable tracing entirely (no-op, zero overhead)
+tracing:
+  endpoint: ""

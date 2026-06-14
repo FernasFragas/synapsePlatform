@@ -8,15 +8,30 @@ import (
 // MessagePoller is the port interface for consuming messages
 // Any message broker (Kafka, RabbitMQ, NATS) must implement this.
 type MessagePoller interface {
-
-	// PollMessage returns the device message and a receipt handle for acknowledgment
-	PollMessage(ctx context.Context) (*DeviceMessage, error)
+	PollMessage(ctx context.Context) (*Delivery, error)
 
 	Close(ctx context.Context) error
 }
 
+// AckHandler marks a delivery as durably handled by the inbound adapter.
+// For Kafka this commits an offset; other adapters can map it to their own
+// acknowledgment mechanism.
+type AckHandler func(ctx context.Context) error
+
 type Processor struct {
-	poller            MessagePoller
+	poller MessagePoller
+}
+
+type MessageMetadata struct {
+	Source  string
+	Headers map[string]string
+	Labels  map[string]string
+}
+
+type Delivery struct {
+	Message  *DeviceMessage
+	Metadata MessageMetadata
+	Ack      AckHandler
 }
 
 func NewProcessor(poller MessagePoller) *Processor {
@@ -25,41 +40,40 @@ func NewProcessor(poller MessagePoller) *Processor {
 	}
 }
 
-func (p *Processor) ProcessData(ctx context.Context) (*DeviceMessage, error) {
-	msg, err := p.poller.PollMessage(ctx)
+func (p *Processor) ProcessData(ctx context.Context) (*Delivery, error) {
+	delivery, err := p.poller.PollMessage(ctx)
 	if err != nil {
-		return nil, ProcessorError{
+		return delivery, ProcessorError{
 			TypeOfError:            ErrPollingMsg,
 			ErrorOccurredBecauseOf: ErrFailedToPollMsg,
-			Field:                  "msg",
-			Expected:               "DeviceMessage",
-			Got:                    msg,
+			Field:                  "delivery",
+			Expected:               "Delivery",
+			Got:                    delivery,
 			Err:                    err,
 		}
 	}
 
-	if msg == nil {
-		return nil, ProcessorError{
+	if delivery == nil || delivery.Message == nil {
+		return delivery, ProcessorError{
 			TypeOfError:            ErrProcessingMsg,
 			ErrorOccurredBecauseOf: ErrFailedToProcessMsg,
-			Field:                  "msg",
+			Field:                  "delivery.message",
 			Expected:               "DeviceMessage",
-			Got:                    msg,
+			Got:                    delivery,
 			Err:                    ErrNilMessage,
 		}
 	}
 
-	err = msg.ValidateRawMessage()
-	if err != nil {
-		return nil, ProcessorError{
+	if err := delivery.Message.ValidateRawMessage(); err != nil {
+		return delivery, ProcessorError{
 			TypeOfError:            ErrValidatingMsg,
 			ErrorOccurredBecauseOf: ErrFailedToValidateMsg,
-			Field:                  "msg",
-			Expected:               "DeviceMessage",
-			Got:                    msg,
+			Field:                  "delivery.message",
+			Expected:               "valid DeviceMessage",
+			Got:                    delivery.Message,
 			Err:                    err,
 		}
 	}
 
-	return msg, nil
+	return delivery, nil
 }

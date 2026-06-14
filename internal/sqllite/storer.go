@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"synapsePlatform/internal/api"
 	"time"
 
 	"synapsePlatform/internal/ingestor"
@@ -72,14 +73,7 @@ func NewRepo(dbPath string) (*Repo, error) {
 func (db *Repo) StoreData(ctx context.Context, data *ingestor.BaseEvent) error {
 	dataJSON, err := json.Marshal(data.Data)
 	if err != nil {
-		return ingestor.ProcessorError{
-			TypeOfError:            ingestor.ErrStoringMsg,
-			ErrorOccurredBecauseOf: ingestor.ErrFailedToStoreMsg,
-			Field:                  "msg",
-			Expected:               "DeviceMessage",
-			Got:                    dataJSON,
-			Err:                    err,
-		}
+		return ingestor.NewTerminalError(fmt.Errorf("marshal event data: %w", err))
 	}
 
 	value := *data
@@ -98,14 +92,7 @@ func (db *Repo) StoreData(ctx context.Context, data *ingestor.BaseEvent) error {
 		Metadata:      sql.NullString{},
 	})
 	if err != nil {
-		return ingestor.ProcessorError{
-			TypeOfError:            ingestor.ErrStoringMsg,
-			ErrorOccurredBecauseOf: ingestor.ErrFailedToStoreMsg,
-			Field:                  "msg",
-			Expected:               "DeviceMessage",
-			Got:                    dataJSON,
-			Err:                    err,
-		}
+		return classifyStoreError(fmt.Errorf("create event: %w", err))
 	}
 
 	return nil
@@ -139,7 +126,7 @@ func (db *Repo) StoreBatch(ctx context.Context, events []*ingestor.BaseEvent) er
 func (db *Repo) insertChunk(ctx context.Context, events []*ingestor.BaseEvent) error {
 	tx, err := db.Db.BeginTx(ctx, nil)
 	if err != nil {
-		return fmt.Errorf("failed to begin transaction: %w", err)
+		return classifyStoreError(fmt.Errorf("begin transaction: %w", err))
 	}
 	defer tx.Rollback()
 
@@ -151,7 +138,7 @@ func (db *Repo) insertChunk(ctx context.Context, events []*ingestor.BaseEvent) e
 
 		dataJSON, err := json.Marshal(event.Data)
 		if err != nil {
-			return fmt.Errorf("failed to marshal data: %w", err)
+			return ingestor.NewTerminalError(fmt.Errorf("marshal event data: %w", err))
 		}
 
 		args = append(args,
@@ -178,11 +165,10 @@ func (db *Repo) insertChunk(ctx context.Context, events []*ingestor.BaseEvent) e
 
 	_, err = tx.ExecContext(ctx, query, args...)
 	if err != nil {
-		return fmt.Errorf("failed to execute batch insert: %w", err)
+		return classifyStoreError(fmt.Errorf("execute batch insert: %w", err))
 	}
-
 	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("failed to commit transaction: %w", err)
+		return classifyStoreError(fmt.Errorf("commit transaction: %w", err))
 	}
 
 	return nil
@@ -257,16 +243,62 @@ func (db *Repo) StoreFailure(ctx context.Context, failed ingestor.FailedMessage)
 		msgJSON, _ = json.Marshal(failed.Message)
 	}
 
-	var errText string
-	if failed.Err != nil {
-		errText = failed.Err.Error()
-	}
+	errText := failed.ErrorMessage
 
 	_, err := db.Db.ExecContext(ctx,
 		`INSERT INTO failed_messages (stage, message, error, created_at) VALUES (?, ?, ?, datetime('now'))`,
 		failed.Stage, string(msgJSON), errText,
 	)
 
+	return err
+}
+
+func (db *Repo) AggregateByDomain(ctx context.Context, since time.Time) ([]api.DomainStat, error) {
+	rows, err := db.Queries.SummarizeByDomain(ctx, since)
+	if err != nil {
+		return nil, fmt.Errorf("summarize by domain: %w", err)
+	}
+
+	stats := make([]api.DomainStat, len(rows))
+	for i, r := range rows {
+		stats[i] = api.DomainStat{
+			Domain:    r.Domain,
+			EventType: r.EventType,
+			Count:     r.Cnt,
+			FirstSeen: toTime(r.FirstSeen),
+			LastSeen:  toTime(r.LastSeen),
+		}
+	}
+	return stats, nil
+}
+
+func (db *Repo) LatestSummary(ctx context.Context, domain string, since time.Time) (*api.Report, bool, error) {
+	// You need a sqlc query first; placeholder using raw SQL until then:
+	row := db.Db.QueryRowContext(ctx,
+		`SELECT domain, window_from, model, content, created_at
+		 FROM summaries
+		 WHERE domain = ? AND window_from = ?
+		 ORDER BY created_at DESC LIMIT 1`,
+		domain, since,
+	)
+
+	var r api.Report
+	err := row.Scan(&r.Domain, &r.WindowFrom, &r.Model, &r.Content, &r.CreatedAt)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, false, nil
+		}
+		return nil, false, err
+	}
+	return &r, true, nil
+}
+
+func (db *Repo) SaveSummary(ctx context.Context, r *api.Report) error {
+	_, err := db.Db.ExecContext(ctx,
+		`INSERT INTO summaries (domain, window_from, model, content, created_at)
+		 VALUES (?, ?, ?, ?, ?)`,
+		r.Domain, r.WindowFrom, r.Model, r.Content, r.CreatedAt,
+	)
 	return err
 }
 
@@ -372,4 +404,36 @@ func clamp(v, min, max, fallback int) int {
 	}
 
 	return v
+}
+
+func toTime(v interface{}) time.Time {
+	if t, ok := v.(time.Time); ok {
+		return t
+	}
+	if s, ok := v.(string); ok {
+		return parseSQLiteTime(s)
+	}
+	if b, ok := v.([]byte); ok {
+		return parseSQLiteTime(string(b))
+	}
+	return time.Time{}
+}
+
+func parseSQLiteTime(value string) time.Time {
+	value = strings.TrimSpace(value)
+	for _, layout := range []string{
+		time.RFC3339Nano,
+		time.RFC3339,
+		"2006-01-02 15:04:05.999999999 -0700 MST",
+		"2006-01-02 15:04:05 -0700 MST",
+		"2006-01-02 15:04:05.999999999Z07:00",
+		"2006-01-02 15:04:05Z07:00",
+		"2006-01-02 15:04:05.999999999",
+		"2006-01-02 15:04:05",
+	} {
+		if t, err := time.Parse(layout, value); err == nil {
+			return t
+		}
+	}
+	return time.Time{}
 }

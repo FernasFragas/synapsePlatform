@@ -19,46 +19,52 @@ func NewMessagePoller(log *slog.Logger, poller ingestor.MessagePoller) *MessageP
 }
 
 // PollMessage logs the consuming messages, calling handler for each.
-func (mp *MessagePoller) PollMessage(ctx context.Context) (*ingestor.DeviceMessage, error) {
-	msg, err := mp.poller.PollMessage(ctx)
-	if err != nil || msg == nil {
-		attrs := []any{"error", err}
-		if msg != nil {
-			attrs = append(attrs,
-				"device_id", msg.DeviceID,
-				"type", msg.Type,
-				"timestamp", msg.Timestamp.String(),
-			)
-		}
-
-		mp.logger.Error("failed to poll message", attrs...)
+func (mp *MessagePoller) PollMessage(ctx context.Context) (*ingestor.Delivery, error) {
+	delivery, err := mp.poller.PollMessage(ctx)
+	if err != nil {
+		mp.logger.ErrorContext(ctx, "failed to poll message",
+			"metadata", deliveryMetadata(delivery),
+			"error", err,
+		)
+		return delivery, err
 	}
 
-	if msg == nil {
-		mp.logger.Debug("no message available")
-
-		return nil, nil
+	if delivery == nil || delivery.Message == nil {
+		mp.logger.DebugContext(ctx, "no message available")
+		return delivery, nil
 	}
 
-	mp.logger.Info("polled message",
-		"device_id", msg.DeviceID,
-		"type", msg.Type,
-		"timestamp", msg.Timestamp.String(),
+	mp.logger.InfoContext(ctx, "polled message",
+		"device_id", delivery.Message.DeviceID,
+		"type", delivery.Message.Type,
+		"source", delivery.Metadata.Source,
 	)
 
-	return msg, nil
+	return delivery, nil
 }
 
 // Close logs gracefully shuts down the consumer.
 func (mp *MessagePoller) Close(ctx context.Context) error {
 	err := mp.poller.Close(ctx)
 	if err != nil {
-		mp.logger.Error("failed to close connection", "error", err)
+		mp.logger.ErrorContext(ctx, "failed to close connection", "error", err)
 
 		return err
 	}
 
-	mp.logger.Info("closed connection")
+	mp.logger.InfoContext(ctx, "closed connection")
 
 	return nil
+}
+
+func deliveryMetadata(delivery *ingestor.Delivery) any {
+	if delivery == nil {
+		return nil
+	}
+
+	return map[string]any{
+		"source":  delivery.Metadata.Source,
+		"headers": delivery.Metadata.Headers,
+		"labels":  delivery.Metadata.Labels,
+	}
 }
