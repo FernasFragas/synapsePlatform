@@ -1,0 +1,8 @@
+[INFO] Starting Performance Test Suite at Sun Jun 14 12:59:16 WEST 2026
+[INFO] Report will be saved to: ./performance-reports/synapse-performance-report-20260614-125916.md
+[INFO] Debug log: ./performance-reports/debug-20260614-125916.log
+[INFO] Application is running (PID: 44586)
+[DEBUG] SQLite journal_mode: delete
+[DEBUG] SQLite busy_timeout on CLI connection: 0
+[DEBUG] SQLite synchronous on CLI connection: 2
+[WARN] SQLite is not in WAL mode (current: delete)

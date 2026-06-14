@@ -78,25 +78,38 @@ func (db *Repo) StoreData(ctx context.Context, data *ingestor.BaseEvent) error {
 
 	value := *data
 
-	_, err = db.Queries.CreateEvent(ctx, generated.CreateEventParams{
-		EventID:       value.EventID.String(),
-		Domain:        value.Domain,
-		EventType:     value.EventType,
-		EntityID:      value.EntityID,
-		EntityType:    value.EntityType,
-		OccurredAt:    value.OccurredAt,
-		IngestedAt:    value.IngestedAt,
-		Source:        value.Source,
-		SchemaVersion: value.SchemaVersion,
-		Data:          string(dataJSON),
-		Metadata:      sql.NullString{},
-	})
+	result, err := db.Db.ExecContext(ctx, `
+    INSERT OR IGNORE INTO events (
+        event_id, domain, event_type, entity_id, entity_type,
+        occurred_at, ingested_at, source, schema_version, data, metadata
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+`,
+		value.EventID.String(),
+		value.Domain,
+		value.EventType,
+		value.EntityID,
+		value.EntityType,
+		value.OccurredAt,
+		value.IngestedAt,
+		value.Source,
+		value.SchemaVersion,
+		string(dataJSON),
+		sql.NullString{},
+	)
 	if err != nil {
 		return classifyStoreError(fmt.Errorf("create event: %w", err))
 	}
 
-	return nil
+	inserted, err := result.RowsAffected()
+	if err != nil {
+		return classifyStoreError(fmt.Errorf("read rows affected: %w", err))
+	}
 
+	if err := db.recordStoreAccounting(ctx, 1, inserted); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (db *Repo) StoreBatch(ctx context.Context, events []*ingestor.BaseEvent) error {
@@ -163,9 +176,16 @@ func (db *Repo) insertChunk(ctx context.Context, events []*ingestor.BaseEvent) e
     ) VALUES %s
 `, strings.Join(placeholders, ", "))
 
-	_, err = tx.ExecContext(ctx, query, args...)
+	result, err := tx.ExecContext(ctx, query, args...)
 	if err != nil {
 		return classifyStoreError(fmt.Errorf("execute batch insert: %w", err))
+	}
+	inserted, err := result.RowsAffected()
+	if err != nil {
+		return classifyStoreError(fmt.Errorf("read rows affected: %w", err))
+	}
+	if err := db.recordStoreAccountingTx(ctx, tx, int64(len(events)), inserted); err != nil {
+		return err
 	}
 	if err := tx.Commit(); err != nil {
 		return classifyStoreError(fmt.Errorf("commit transaction: %w", err))
@@ -173,6 +193,33 @@ func (db *Repo) insertChunk(ctx context.Context, events []*ingestor.BaseEvent) e
 
 	return nil
 }
+
+func (db *Repo) recordStoreAccounting(ctx context.Context, attempted, inserted int64) error {
+	_, err := db.Db.ExecContext(ctx, storeAccountingQuery, attempted, inserted, attempted-inserted)
+	if err != nil {
+		return classifyStoreError(fmt.Errorf("record store accounting: %w", err))
+	}
+
+	return nil
+}
+
+func (db *Repo) recordStoreAccountingTx(ctx context.Context, tx *sql.Tx, attempted, inserted int64) error {
+	_, err := tx.ExecContext(ctx, storeAccountingQuery, attempted, inserted, attempted-inserted)
+	if err != nil {
+		return classifyStoreError(fmt.Errorf("record store accounting: %w", err))
+	}
+
+	return nil
+}
+
+const storeAccountingQuery = `
+UPDATE store_accounting
+SET attempted_events = attempted_events + ?,
+    inserted_events = inserted_events + ?,
+    duplicate_events = duplicate_events + ?,
+    updated_at = CURRENT_TIMESTAMP
+WHERE id = 1
+`
 
 func (db *Repo) GetEvent(ctx context.Context, eventID string) (*ingestor.BaseEvent, error) {
 	row, err := db.Queries.GetEvent(ctx, eventID)

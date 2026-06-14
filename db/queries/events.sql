@@ -45,7 +45,18 @@ ORDER BY ingested_at DESC, event_id DESC
 LIMIT ?;
 
 CREATE INDEX IF NOT EXISTS idx_ingested_event ON events(ingested_at DESC, event_id DESC);
-CREATE UNIQUE INDEX idx_business_key ON events(entity_id, event_type, occurred_at);
+
+CREATE TABLE IF NOT EXISTS store_accounting (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    attempted_events INTEGER NOT NULL DEFAULT 0,
+    inserted_events INTEGER NOT NULL DEFAULT 0,
+    duplicate_events INTEGER NOT NULL DEFAULT 0,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+INSERT OR IGNORE INTO store_accounting (
+    id, attempted_events, inserted_events, duplicate_events, updated_at
+) VALUES (1, 0, 0, 0, CURRENT_TIMESTAMP);
 
 -- name: SummarizeByDomain :many
 SELECT domain, event_type,

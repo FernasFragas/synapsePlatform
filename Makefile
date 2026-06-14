@@ -346,6 +346,11 @@ perf-history:
 perf-compare:
 	@cat performance-reports/COMPARISON.md 2>/dev/null || echo "No comparison data yet. Run at least 2 performance tests."
 
+## perf-evolution-report: Generate Markdown tables comparing all historical performance test stats
+perf-evolution-report:
+	@chmod +x test/generate_perf_evolution_report.sh
+	@./test/generate_perf_evolution_report.sh
+
 ## perf-trend: Show throughput trend (last 10 runs)
 perf-trend:
 	@echo "📈 Throughput Trend (Test 2: 100 msg/sec target)"
