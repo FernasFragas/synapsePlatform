@@ -332,9 +332,7 @@ func (i *Ingestor) saveBatchWithDeliveries(
 	for {
 		select {
 		case <-ctx.Done():
-			i.flushBatchWithDeliveries(ctx, batch)
-
-			return nil
+			return i.drainAndFlushWithDeliveries(eventCh, batch)
 
 		case <-ticker.C:
 			i.flushBatchWithDeliveries(ctx, batch)
@@ -353,6 +351,38 @@ func (i *Ingestor) saveBatchWithDeliveries(
 				batch = batch[:0]
 				resetTicker(ticker, i.cfg.BatchTimeout)
 			}
+		}
+	}
+}
+
+func (i *Ingestor) drainAndFlushWithDeliveries(
+	eventCh <-chan eventWithDelivery,
+	batch []eventWithDelivery,
+) error {
+	drainCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	for {
+		select {
+		case item, ok := <-eventCh:
+			if !ok {
+				i.flushBatchWithDeliveries(drainCtx, batch)
+
+				return nil
+			}
+
+			batch = append(batch, item)
+			if len(batch) >= i.cfg.BatchSize {
+				i.flushBatchWithDeliveries(drainCtx, batch)
+				batch = batch[:0]
+			}
+
+		case <-drainCtx.Done():
+			flushCtx, flushCancel := context.WithTimeout(context.Background(), 5*time.Second)
+			i.flushBatchWithDeliveries(flushCtx, batch)
+			flushCancel()
+
+			return nil
 		}
 	}
 }
@@ -466,12 +496,15 @@ func (i *Ingestor) failTerminalAndAck(
 		FailedAt:     time.Now().UTC(),
 	}
 
-	if storeErr := i.failures.StoreFailure(ctx, failed); storeErr != nil {
+	opCtx, cancel := operationContext(ctx, 5*time.Second)
+	defer cancel()
+
+	if storeErr := i.failures.StoreFailure(opCtx, failed); storeErr != nil {
 		// Do not ack. Redelivery is safer than losing the original message.
 		return
 	}
 
-	i.ack(ctx, delivery, stage)
+	i.ack(opCtx, delivery, stage)
 }
 
 func (i *Ingestor) ack(ctx context.Context, delivery *Delivery, stage string) {
@@ -479,8 +512,11 @@ func (i *Ingestor) ack(ctx context.Context, delivery *Delivery, stage string) {
 		return
 	}
 
-	if err := delivery.Ack(ctx); err != nil && ctx.Err() == nil {
-		_ = i.failures.StoreFailure(ctx, FailedMessage{
+	opCtx, cancel := operationContext(ctx, 5*time.Second)
+	defer cancel()
+
+	if err := delivery.Ack(opCtx); err != nil && opCtx.Err() == nil {
+		_ = i.failures.StoreFailure(opCtx, FailedMessage{
 			Stage:        stage,
 			ErrorType:    "ack_failed",
 			ErrorMessage: err.Error(),
@@ -488,6 +524,14 @@ func (i *Ingestor) ack(ctx context.Context, delivery *Delivery, stage string) {
 			FailedAt:     time.Now().UTC(),
 		})
 	}
+}
+
+func operationContext(ctx context.Context, timeout time.Duration) (context.Context, context.CancelFunc) {
+	if ctx != nil && ctx.Err() == nil {
+		return ctx, func() {}
+	}
+
+	return context.WithTimeout(context.Background(), timeout)
 }
 
 func resetTicker(ticker *time.Ticker, timeout time.Duration) {

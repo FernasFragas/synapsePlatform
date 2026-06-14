@@ -1,0 +1,21 @@
+{
+  "timestamp": "20260614-130006",
+  "report": "synapse-performance-report-20260614-130006.md",
+  "git_commit": "f47629a",
+  "sqlite": {
+    "journal_mode": "[INFO] SQLite is in WAL mode
+wal",
+    "busy_timeout_cli_connection_ms": [INFO] SQLite is in WAL mode
+0,
+    "synchronous_cli_connection": [INFO] SQLite is in WAL mode
+1
+  },
+  "totals": {
+    "events": 36600,
+    "failed_messages": 0,
+    "final_kafka_lag": 0,
+    "query_latency_ms": 5
+  },
+  "tests": [{"id":1,"target_rate":10,"sent":600,"duration_seconds":63,"consumed":600,"inserted":600,"duplicates":0,"failed":0,"committed":600,"insert_success_rate":100.00,"commit_rate":100.00,"throughput":9.5,"peak_lag":0,"avg_lag":0,"final_lag":0},{"id":2,"target_rate":100,"sent":6000,"duration_seconds":73,"consumed":6000,"inserted":6000,"duplicates":0,"failed":0,"committed":6000,"insert_success_rate":100.00,"commit_rate":100.00,"throughput":82.2,"peak_lag":0,"avg_lag":0,"final_lag":0},{"id":3,"target_rate":500,"sent":30000,"duration_seconds":40,"consumed":30000,"inserted":30000,"duplicates":0,"failed":0,"committed":30000,"insert_success_rate":100.00,"commit_rate":100.00,"throughput":750.0,"peak_lag":0,"avg_lag":0,"final_lag":0}],
+  "status": "passed"
+}

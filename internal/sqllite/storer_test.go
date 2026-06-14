@@ -58,13 +58,18 @@ func (s *StorerTestSuite) TestGetEvent_NotFound_ReturnsErrEventNotFound() {
 	s.ErrorIs(err, ingestor.ErrEventNotFound)
 }
 
-func (s *StorerTestSuite) TestStoreData_DuplicateEventID_ReturnsError() {
+func (s *StorerTestSuite) TestStoreData_DuplicateEventID_RecordsDuplicate() {
 	event := s.energyEvent("device-1", time.Now().UTC())
 
 	s.Require().NoError(s.repo.StoreData(s.ctx, event))
 
 	err := s.repo.StoreData(s.ctx, event)
-	s.Error(err)
+	s.NoError(err)
+
+	attempted, inserted, duplicates := s.storeAccounting()
+	s.Equal(int64(2), attempted)
+	s.Equal(int64(1), inserted)
+	s.Equal(int64(1), duplicates)
 }
 
 // --- ListEvents pagination ---
@@ -272,9 +277,14 @@ func (s *StorerTestSuite) TestStoreBatch_LargeBatch_Persists() {
 		s.repo.Db.QueryRowContext(s.ctx, "SELECT COUNT(*) FROM events").Scan(&count),
 	)
 	s.Equal(100, count)
+
+	attempted, inserted, duplicates := s.storeAccounting()
+	s.Equal(int64(100), attempted)
+	s.Equal(int64(100), inserted)
+	s.Equal(int64(0), duplicates)
 }
 
-func (s *StorerTestSuite) TestStoreBatch_DuplicateEventID_RollsBackTransaction() {
+func (s *StorerTestSuite) TestStoreBatch_DuplicateEventID_RecordsDuplicate() {
 	event1 := s.energyEvent("device-1", time.Now().UTC())
 	event2 := s.energyEvent("device-2", time.Now().UTC())
 	event2.EventID = event1.EventID // Duplicate ID
@@ -292,6 +302,11 @@ func (s *StorerTestSuite) TestStoreBatch_DuplicateEventID_RollsBackTransaction()
 		s.repo.Db.QueryRowContext(s.ctx, "SELECT COUNT(*) FROM events").Scan(&count),
 	)
 	s.Equal(1, count)
+
+	attempted, inserted, duplicates := s.storeAccounting()
+	s.Equal(int64(2), attempted)
+	s.Equal(int64(1), inserted)
+	s.Equal(int64(1), duplicates)
 }
 
 func (s *StorerTestSuite) TestStoreBatch_MixedEventTypes_AllPersist() {
@@ -334,6 +349,17 @@ func (s *StorerTestSuite) seedEvents(events ...*ingestor.BaseEvent) {
 	for _, e := range events {
 		s.Require().NoError(s.repo.StoreData(s.ctx, e))
 	}
+}
+
+func (s *StorerTestSuite) storeAccounting() (int64, int64, int64) {
+	var attempted, inserted, duplicates int64
+	s.Require().NoError(s.repo.Db.QueryRowContext(s.ctx, `
+SELECT attempted_events, inserted_events, duplicate_events
+FROM store_accounting
+WHERE id = 1
+`).Scan(&attempted, &inserted, &duplicates))
+
+	return attempted, inserted, duplicates
 }
 
 func (s *StorerTestSuite) financialEvent(entityID string, ingestedAt time.Time) *ingestor.BaseEvent {

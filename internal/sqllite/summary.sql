@@ -42,6 +42,18 @@ CREATE TABLE IF NOT EXISTS failed_messages (
 CREATE INDEX IF NOT EXISTS idx_failed_stage ON failed_messages(stage);
 CREATE INDEX IF NOT EXISTS idx_failed_created_at ON failed_messages(created_at);
 
+CREATE TABLE IF NOT EXISTS store_accounting (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    attempted_events INTEGER NOT NULL DEFAULT 0,
+    inserted_events INTEGER NOT NULL DEFAULT 0,
+    duplicate_events INTEGER NOT NULL DEFAULT 0,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+INSERT OR IGNORE INTO store_accounting (
+    id, attempted_events, inserted_events, duplicate_events, updated_at
+) VALUES (1, 0, 0, 0, CURRENT_TIMESTAMP);
+
 CREATE TABLE IF NOT EXISTS summaries (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     domain      TEXT NOT NULL,

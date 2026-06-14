@@ -33,20 +33,22 @@ MONITOR_SCRIPT="${SCRIPT_DIR}/performance_monitor.sh"
 
 # Run performance test in background
 echo -e "${GREEN}[INFO]${NC} Starting performance test..."
-"${SCRIPT_DIR}/perform_test.sh" > "${REPORT_DIR}/test-output-${TIMESTAMP}.log" 2>&1 &
+PERF_TIMESTAMP="$TIMESTAMP" "${SCRIPT_DIR}/perform_test.sh" > "${REPORT_DIR}/test-output-${TIMESTAMP}.log" 2>&1 &
 TEST_PID=$!
 
 # Run monitoring in parallel
 echo -e "${GREEN}[INFO]${NC} Starting monitoring..."
-"${MONITOR_SCRIPT}" &
+PERF_TIMESTAMP="$TIMESTAMP" "${MONITOR_SCRIPT}" &
 MONITOR_PID=$!
 
 # Wait for test to complete
+set +e
 wait $TEST_PID
 TEST_EXIT=$?
+set -e
 
 # Wait for monitoring to complete
-wait $MONITOR_PID
+wait $MONITOR_PID || true
 
 echo ""
 echo -e "${GREEN}=========================================="

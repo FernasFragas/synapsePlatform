@@ -8,7 +8,7 @@ set -e
 
 # Configuration
 REPORT_DIR="./performance-reports"
-TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+TIMESTAMP=${PERF_TIMESTAMP:-$(date +%Y%m%d-%H%M%S)}
 METRICS_DIR="${REPORT_DIR}/metrics-${TIMESTAMP}"
 APP_PORT=8080
 DB_PATH="data.db"

@@ -1,0 +1,139 @@
+[INFO] Starting Performance Test Suite at Sun Jun 14 13:00:06 WEST 2026
+[INFO] Report will be saved to: ./performance-reports/synapse-performance-report-20260614-130006.md
+[INFO] Debug log: ./performance-reports/debug-20260614-130006.log
+[INFO] Application is running (PID: 45000)
+[DEBUG] SQLite journal_mode: wal
+[DEBUG] SQLite busy_timeout on CLI connection: 0
+[DEBUG] SQLite synchronous on CLI connection: 1
+[INFO] SQLite is in WAL mode
+[INFO] Starting Test 1: 10 msg/sec target (600 messages)
+[DEBUG] [Test1] Kafka LAG: 0
+[DEBUG] [Test1] Kafka LAG: 0
+[DEBUG] [Test1] Kafka LAG: 0
+[DEBUG] [Test1] Kafka LAG: 0
+[DEBUG] [Test1] Kafka LAG: 0
+[DEBUG] [Test1] Kafka LAG: 0
+[DEBUG] [Test1] Kafka LAG: 0
+[DEBUG] [Test1] Kafka LAG: 0
+[DEBUG] [Test1] Kafka LAG: 0
+[DEBUG] [Test1] Kafka LAG: 0
+[DEBUG] [Test1] Kafka LAG: 0
+[DEBUG] [Test1] Kafka LAG: 0
+[DEBUG] [Test1] Kafka LAG: 0
+[DEBUG] [Test1] Kafka LAG: 0
+[DEBUG] [Test1] Kafka LAG: 0
+[DEBUG] [Test1] Kafka LAG: 0
+[DEBUG] [Test1] Kafka LAG: 0
+[DEBUG] [Test1] Kafka LAG: 0
+[DEBUG] [Test1] Kafka LAG: 0
+[DEBUG] [Test1] Kafka LAG: 0
+[DEBUG] [Test1] Kafka LAG: 0
+[DEBUG] [Test1] Kafka LAG: 0
+[DEBUG] [Test1] Kafka LAG: 0
+[DEBUG] [Test1] Kafka LAG: 0
+[DEBUG] [Test1] Kafka LAG: 0
+[DEBUG] [Test1] Kafka LAG: 0
+[DEBUG] [Test1] Kafka LAG: 0
+[DEBUG] [Test1] Kafka LAG: 0
+[DEBUG] [Test1] Kafka LAG: 0
+[DEBUG] [Test1] Kafka LAG: 0
+[DEBUG] [Test1] Kafka LAG: 0
+[DEBUG] [Test1] Kafka LAG: 0
+[DEBUG] [Test1] Kafka LAG: 0
+[INFO] Messages sent for Test 1. Waiting 10s for processing...
+[DEBUG] [Test1] Kafka LAG: 0
+[DEBUG] [Test1] Kafka LAG: 0
+[DEBUG] [Test1] Kafka LAG: 0
+[DEBUG] [Test1] Kafka LAG: 0
+[DEBUG] [Test1] Kafka LAG: 0
+[INFO] Test 1 complete: inserted=600 consumed=600 duplicates=0 failed=0 committed=600 final_lag=0
+[INFO] Starting Test 2: 100 msg/sec target (6000 messages)
+[DEBUG] [Test2] Kafka LAG: 0
+[DEBUG] [Test2] Kafka LAG: 0
+[DEBUG] [Test2] Kafka LAG: 0
+[DEBUG] [Test2] Kafka LAG: 0
+[DEBUG] [Test2] Kafka LAG: 0
+[DEBUG] [Test2] Kafka LAG: 0
+[DEBUG] [Test2] Kafka LAG: 0
+[DEBUG] [Test2] Kafka LAG: 0
+[DEBUG] [Test2] Kafka LAG: 0
+[DEBUG] [Test2] Kafka LAG: 0
+[DEBUG] [Test2] Kafka LAG: 0
+[DEBUG] [Test2] Kafka LAG: 0
+[DEBUG] [Test2] Kafka LAG: 0
+[DEBUG] [Test2] Kafka LAG: 0
+[DEBUG] [Test2] Kafka LAG: 0
+[DEBUG] [Test2] Kafka LAG: 0
+[DEBUG] [Test2] Kafka LAG: 0
+[DEBUG] [Test2] Kafka LAG: 0
+[DEBUG] [Test2] Kafka LAG: 0
+[DEBUG] [Test2] Kafka LAG: 0
+[DEBUG] [Test2] Kafka LAG: 0
+[DEBUG] [Test2] Kafka LAG: 0
+[DEBUG] [Test2] Kafka LAG: 0
+[DEBUG] [Test2] Kafka LAG: 0
+[DEBUG] [Test2] Kafka LAG: 0
+[DEBUG] [Test2] Kafka LAG: 0
+[DEBUG] [Test2] Kafka LAG: 0
+[DEBUG] [Test2] Kafka LAG: 0
+[DEBUG] [Test2] Kafka LAG: 0
+[DEBUG] [Test2] Kafka LAG: 0
+[DEBUG] [Test2] Kafka LAG: 0
+[DEBUG] [Test2] Kafka LAG: 0
+[DEBUG] [Test2] Kafka LAG: 0
+[DEBUG] [Test2] Kafka LAG: 0
+[DEBUG] [Test2] Kafka LAG: 0
+[DEBUG] [Test2] Kafka LAG: 0
+[DEBUG] [Test2] Kafka LAG: 0
+[DEBUG] [Test2] Kafka LAG: 0
+[INFO] Messages sent for Test 2. Waiting 10s for processing...
+[DEBUG] [Test2] Kafka LAG: 0
+[DEBUG] [Test2] Kafka LAG: 0
+[DEBUG] [Test2] Kafka LAG: 0
+[DEBUG] [Test2] Kafka LAG: 0
+[DEBUG] [Test2] Kafka LAG: 0
+[INFO] Test 2 complete: inserted=6000 consumed=6000 duplicates=0 failed=0 committed=6000 final_lag=0
+[INFO] Starting Test 3: 500 msg/sec target (30000 messages)
+[DEBUG] [Test3] Kafka LAG: 0
+[DEBUG] [Test3] Kafka LAG: 0
+[DEBUG] [Test3] Kafka LAG: 0
+[DEBUG] [Test3] Kafka LAG: 0
+[DEBUG] [Test3] Kafka LAG: 0
+[DEBUG] [Test3] Kafka LAG: 0
+[DEBUG] [Test3] Kafka LAG: 0
+[DEBUG] [Test3] Kafka LAG: 0
+[DEBUG] [Test3] Kafka LAG: 0
+[DEBUG] [Test3] Kafka LAG: 0
+[DEBUG] [Test3] Kafka LAG: 0
+[DEBUG] [Test3] Kafka LAG: 0
+[DEBUG] [Test3] Kafka LAG: 0
+[DEBUG] [Test3] Kafka LAG: 0
+[DEBUG] [Test3] Kafka LAG: 0
+[DEBUG] [Test3] Kafka LAG: 0
+[DEBUG] [Test3] Kafka LAG: 0
+[DEBUG] [Test3] Kafka LAG: 0
+[DEBUG] [Test3] Kafka LAG: 0
+[DEBUG] [Test3] Kafka LAG: 0
+[DEBUG] [Test3] Kafka LAG: 0
+[INFO] Messages sent for Test 3. Waiting 30s for processing...
+[DEBUG] [Test3] Kafka LAG: 0
+[DEBUG] [Test3] Kafka LAG: 0
+[DEBUG] [Test3] Kafka LAG: 0
+[DEBUG] [Test3] Kafka LAG: 0
+[DEBUG] [Test3] Kafka LAG: 0
+[DEBUG] [Test3] Kafka LAG: 0
+[DEBUG] [Test3] Kafka LAG: 0
+[DEBUG] [Test3] Kafka LAG: 0
+[DEBUG] [Test3] Kafka LAG: 0
+[DEBUG] [Test3] Kafka LAG: 0
+[DEBUG] [Test3] Kafka LAG: 0
+[DEBUG] [Test3] Kafka LAG: 0
+[DEBUG] [Test3] Kafka LAG: 0
+[DEBUG] [Test3] Kafka LAG: 0
+[DEBUG] [Test3] Kafka LAG: 0
+[INFO] Test 3 complete: inserted=30000 consumed=30000 duplicates=0 failed=0 committed=30000 final_lag=0
+[INFO] Performance test complete
+[INFO] Report saved to: ./performance-reports/synapse-performance-report-20260614-130006.md
+[INFO] Structured metrics saved to: ./performance-reports/metrics-20260614-130006.json
+[INFO] Index rebuilt: ./performance-reports/INDEX.md
+[INFO] Comparison chart rebuilt: ./performance-reports/COMPARISON.md

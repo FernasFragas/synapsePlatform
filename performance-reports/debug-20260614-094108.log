@@ -1,0 +1,5 @@
+[0;32m[INFO][0m Starting Performance Test Suite at Sun Jun 14 09:41:08 WEST 2026
+[0;32m[INFO][0m Report will be saved to: ./performance-reports/synapse-performance-report-20260614-094108.md
+[0;32m[INFO][0m Debug log: ./performance-reports/debug-20260614-094108.log
+[0;31m[ERROR][0m Application not running on port 8080
+[0;32m[INFO][0m Cleaning up background processes...
