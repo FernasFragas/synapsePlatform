@@ -1,0 +1,19 @@
+apiVersion: v2
+name: synapse-platform
+version: 0.1.0
+## Tracks the Go binary version.
+## In CI, this should be overridden/set from the git tag,
+## e.g. via helm package --app-version $(git describe --tags --abbrev=0) or helm upgrade --set appVersion=$GIT_TAG.
+## Quoted to ensure YAML treats it as a string, not a float.
+appVersion: "0.1.0"
+description: Helm chart for the Synapse Platform
+type: application # Distinguishes this from a library chart (type: library).
+
+dependencies:
+  - name: kafka
+    version: "~26.0.0"
+    repository: "https://charts.bitnami.com/bitnami"
+    condition: kafka.enabled
+    ## The condition: kafka.enabled means Helm will only install the Kafka subchart when kafka.enabled is set to true in values.yaml.
+    ## Production installs would use a separate values file (e.g. values-prod.yaml) with kafka.enabled:
+    ## false, pointing instead at managed Kafka via configuration.
