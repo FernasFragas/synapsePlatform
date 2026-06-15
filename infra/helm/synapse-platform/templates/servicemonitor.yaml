@@ -1,0 +1,18 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ include "synapse-platform.fullname" . }}
+  labels:
+    {{- include "synapse-platform.labels" . | nindent 4 }}
+    {{- with .Values.observability.serviceMonitor.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "synapse-platform.selectorLabels" . | nindent 6 }}
+  endpoints:
+    - port: http
+      path: {{ .Values.observability.serviceMonitor.path | default "/metrics" | quote }}
+      interval: {{ .Values.observability.serviceMonitor.interval | default "30s" }}
+{{- end }}

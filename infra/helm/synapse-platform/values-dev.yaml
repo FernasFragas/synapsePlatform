@@ -1,0 +1,86 @@
+replicaCount: 1
+
+image:
+  repository: synapse-platform
+  tag: "dev"
+  pullPolicy: IfNotPresent
+
+service:
+  type: NodePort
+  port: 8080
+  targetPort: 8080
+  nodePort: 30080
+
+ingress:
+  enabled: false
+
+autoscaling:
+  enabled: false
+
+pdb:
+  enabled: false
+
+llm:
+  enabled: false
+  host: "http://ollama:11434"
+  model: "mistral:7b"
+
+env:
+  SYNAPSE_SERVER_ADDRESS: ":8080"
+  SYNAPSE_KAFKA_BROKERS: "synapse-platform-kafka:9092"
+  SYNAPSE_KAFKA_GROUP_ID: "synapse-platform-consumer"
+  SYNAPSE_KAFKA_TOPICS: "ingestion.raw"
+  SYNAPSE_KAFKA_DLQ_TOPIC: "ingestion.dlq"
+  SYNAPSE_LLM_ENABLED: "false"
+
+kafka:
+  enabled: true
+
+  brokers:
+    - "synapse-platform-kafka:9092"
+  groupID: "synapse-platform-consumer"
+  topics:
+    - "ingestion.raw"
+  dlqTopic: "ingestion.dlq"
+
+  kraft:
+    enabled: true
+
+  zookeeper:
+    enabled: false
+
+  controller:
+    replicaCount: 1
+
+  broker:
+    replicaCount: 0
+
+  listeners:
+    client:
+      protocol: PLAINTEXT
+
+  sasl:
+    enabled: false
+
+  auth:
+    enabled: false
+
+  persistence:
+    enabled: false
+
+  logPersistence:
+    enabled: false
+
+  provisioning:
+    enabled: true
+    topics:
+      - name: ingestion.raw
+        partitions: 1
+        replicationFactor: 1
+      - name: ingestion.dlq
+        partitions: 1
+        replicationFactor: 1
+
+observability:
+  serviceMonitor:
+    enabled: false

@@ -22,7 +22,7 @@ kafka:
 llm:
   enabled: false
   host: "http://ollama:11434"
-  model: "llama3"
+  model: "mistral:7b"
 
 service:
   type: ClusterIP
@@ -42,7 +42,7 @@ autoscaling:
 pdb:
   enabled: true
   minAvailable: 1
-  
+
 observability:
   serviceMonitor:
     enabled: false
@@ -51,3 +51,20 @@ health:
   readinessPath: /readyz
   livenessPath: /livez
   startupPath: /startupz
+
+env:
+  - name: SYNAPSE_JWT_SECRET
+    valueFrom:
+      secretKeyRef:
+        name: {{ include "synapse-platform.fullname" . }}-secret
+        key: jwt-secret
+  - name: JWT_SECRET
+      valueFrom:
+        secretKeyRef:
+          name: {{ include "synapse-platform.fullname" . }}-secret
+          key: jwt-secret
+
+spec:
+  {{- if not .Values.autoscaling.enabled }}
+  replicas: {{ .Values.replicaCount }}
+  {{- end }}

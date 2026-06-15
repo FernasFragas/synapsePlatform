@@ -1,0 +1,13 @@
+  {{- if .Values.pdb.enabled }}
+  apiVersion: policy/v1
+  kind: PodDisruptionBudget
+  metadata:
+    name: {{ include "synapse-platform.fullname" . }}
+    labels:
+      {{- include "synapse-platform.labels" . | nindent 4 }}
+  spec:
+    minAvailable: {{ .Values.pdb.minAvailable }}
+    selector:
+      matchLabels:
+        {{- include "synapse-platform.selectorLabels" . | nindent 6 }}
+  {{- end }}

@@ -1,0 +1,122 @@
+replicaCount: 2
+
+image:
+  repository: synapse-platform
+  tag: "0.1.0"
+  pullPolicy: IfNotPresent
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+env:
+  SYNAPSE_SERVER_ADDRESS: ":8080"
+  SYNAPSE_KAFKA_BROKERS: "kafka:9092"
+  SYNAPSE_KAFKA_GROUP_ID: "synapse-platform-consumer"
+  SYNAPSE_KAFKA_TOPICS: "ingestion.raw"
+  SYNAPSE_KAFKA_DLQ_TOPIC: "ingestion.dlq"
+  SYNAPSE_LLM_ENABLED: "true"
+  SYNAPSE_LLM_HOST: "http://ollama:11434"
+  SYNAPSE_LLM_MODEL: "mistral:7b"
+
+secretEnv:
+  SYNAPSE_JWT_SECRET:
+    secretName: synapse-platform-secret
+    secretKey: jwt-secret
+
+auth:
+  jwt:
+    issuer: "https://auth.example.com"
+    audience: "synapse-platform-api"
+    secret: "change-me-in-real-deployments"
+
+kafka:
+  enabled: false
+  brokers:
+    - kafka:9092
+  groupID: synapse-platform-consumer
+  topics:
+    - ingestion.raw
+  dlqTopic: ingestion.dlq
+  minBytes: 100000
+  maxBytes: 100000000
+  maxMessageSize: 1048576
+
+llm:
+  enabled: true
+  host: "http://ollama:11434"
+  model: "mistral:7b"
+  timeout: 60s
+  maxTokens: 512
+  temperature: 0.2
+
+database:
+  path: /data/data.db
+
+service:
+  type: ClusterIP
+  port: 8080
+  targetPort: 8080
+
+#TLS example for a real environment:
+#
+#ingress:
+#  enabled: true
+#  className: nginx
+#  annotations:
+#    cert-manager.io/cluster-issuer: letsencrypt-prod
+#  hosts:
+#    - host: synapse.example.com
+#      paths:
+#        - path: /
+#          pathType: Prefix
+#  tls:
+#    - secretName: synapse-platform-tls
+#      hosts:
+#        - synapse.example.com
+
+ingress:
+  enabled: false
+  className: ""
+  hosts:
+    - host: synapse.local
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+
+autoscaling:
+  enabled: false
+  minReplicas: 2
+  maxReplicas: 5
+  targetCPUUtilizationPercentage: 70
+
+pdb:
+  enabled: true
+  minAvailable: 1
+
+observability:
+  serviceMonitor:
+    enabled: false
+    path: /metrics
+    interval: 30s
+    labels: {}
+
+health:
+  readinessPath: /readyz
+  livenessPath: /livez
+  startupPath: /startupz
+  readiness:
+    initialDelaySeconds: 5
+    periodSeconds: 10
+  liveness:
+    initialDelaySeconds: 15
+    periodSeconds: 20
+  startup:
+    initialDelaySeconds: 10
+    periodSeconds: 5
+    failureThreshold: 30
