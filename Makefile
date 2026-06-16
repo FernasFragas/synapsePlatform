@@ -1,4 +1,4 @@
-.PHONY: help run build lint test clean docker-up docker-down docker-logs kafka-create-topic kafka-test-message sqlc-generate jaeger-up jaeger-down jaeger-logs
+.PHONY: help run build lint test clean docker-up docker-down docker-logs kafka-create-topic kafka-test-message sqlc-generate openapi-validate jaeger-up jaeger-down jaeger-logs
 
 # Default target
 .DEFAULT_GOAL := help
@@ -264,6 +264,14 @@ sqlc-generate:
 		exit 1; \
 	fi
 
+## openapi-validate: Validate the OpenAPI contract
+openapi-validate:
+	@if command -v redocly >/dev/null 2>&1; then \
+		redocly lint openapi.yaml; \
+	else \
+		npx --yes @redocly/cli@latest lint openapi.yaml; \
+	fi
+
 ## db-reset: Delete and recreate the database
 db-reset:
 	@echo "🗑️  Deleting database..."
@@ -417,3 +425,65 @@ e2e-test:
 	E2E_OLLAMA_URL=http://localhost:11435 \
 	go test -v -timeout 300s -tags e2e ./test/e2e/...
 	docker compose down
+
+
+KIND_CLUSTER ?= synapse-platform
+KIND_CONFIG ?= infra/k8s/local/kind-cluster.yaml
+K8S_NAMESPACE ?= synapse-platform
+
+HELM_RELEASE ?= synapse-platform
+HELM_CHART ?= infra/helm/synapse-platform
+HELM_VALUES_DEV ?= infra/helm/synapse-platform/values-dev.yaml
+
+IMAGE_REPOSITORY ?= synapse-platform
+IMAGE_TAG ?= dev
+IMAGE ?= $(IMAGE_REPOSITORY):$(IMAGE_TAG)
+
+## kind-up: Create kind cluster and load the local image
+kind-up:
+	@if kind get clusters | grep -qx "$(KIND_CLUSTER)"; then \
+			echo "Kind cluster $(KIND_CLUSTER) already exists"; \
+	else \
+			kind create cluster --name "$(KIND_CLUSTER)" --config "$(KIND_CONFIG)"; \
+	fi
+	docker build -t "$(IMAGE)" .
+	kind load docker-image "$(IMAGE)" --name "$(KIND_CLUSTER)"
+
+## kind-down: Destroy kind cluster
+kind-down:
+	kind delete cluster --name "$(KIND_CLUSTER)"
+
+## helm-install: Install Synapse into the local namespace
+helm-install:
+	helm dependency build "$(HELM_CHART)"
+	helm install "$(HELM_RELEASE)" "$(HELM_CHART)" \
+			--namespace "$(K8S_NAMESPACE)" \
+			--create-namespace \
+			-f "$(HELM_VALUES_DEV)" \
+			--wait \
+			--timeout 5m
+
+## helm-upgrade: Install or upgrade Synapse idempotently
+helm-upgrade:
+	helm dependency build "$(HELM_CHART)"
+	helm upgrade --install "$(HELM_RELEASE)" "$(HELM_CHART)" \
+			--namespace "$(K8S_NAMESPACE)" \
+			--create-namespace \
+			-f "$(HELM_VALUES_DEV)" \
+			--wait \
+			--timeout 5m
+
+## helm-test: Run chart test hooks
+helm-test:
+	helm test "$(HELM_RELEASE)" --namespace "$(K8S_NAMESPACE)"
+
+## helm-delete: Uninstall Synapse from the namespace
+helm-delete:
+	helm uninstall "$(HELM_RELEASE)" --namespace "$(K8S_NAMESPACE)"
+
+## helm-template: Render Kubernetes manifests locally
+helm-template:
+	helm dependency build "$(HELM_CHART)"
+	helm template "$(HELM_RELEASE)" "$(HELM_CHART)" \
+			--namespace "$(K8S_NAMESPACE)" \
+			-f "$(HELM_VALUES_DEV)"
