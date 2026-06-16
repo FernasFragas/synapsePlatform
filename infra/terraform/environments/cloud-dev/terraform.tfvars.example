@@ -1,0 +1,13 @@
+namespace               = "synapse-platform"
+image_tag               = "0.1.0"
+replica_count           = 2
+kafka_brokers           = ["broker-1.example.internal:9092"]
+llm_enabled             = false
+service_monitor_enabled = true
+
+# Required for real applies. Keep actual values in an uncommitted tfvars file
+# or inject them through your deployment pipeline.
+cluster_endpoint       = "https://example.kubernetes.internal"
+cluster_token          = "replace-with-token"
+cluster_ca_certificate = "replace-with-base64-ca"
+jwt_secret             = "replace-with-dev-secret"

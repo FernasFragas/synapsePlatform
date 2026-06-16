@@ -26,3 +26,12 @@ coverage.html
 s.txt
 
 .env
+
+# Terraform
+**/.terraform/
+**/.terraform.lock.hcl
+**/terraform.tfstate
+**/terraform.tfstate.*
+**/terraform.tfvars
+**/*.auto.tfvars
+!**/terraform.tfvars.example
