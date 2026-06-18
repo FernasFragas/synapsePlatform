@@ -1,0 +1,70 @@
+replicaCount: 2
+image:
+  repository: synapse-platform
+  tag: "0.1.0"
+  pullPolicy: IfNotPresent
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+kafka:
+  enabled: true
+  brokers:
+    - kafka:9092
+  topics:
+    - events
+  dlqTopic: events-dlq
+
+llm:
+  enabled: false
+  host: "http://ollama:11434"
+  model: "mistral:7b"
+
+service:
+  type: ClusterIP
+  port: 8080
+
+ingress:
+  enabled: false
+  hosts: []
+  tls: []
+
+autoscaling:
+  enabled: false
+  minReplicas: 2
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 80
+
+pdb:
+  enabled: true
+  minAvailable: 1
+
+observability:
+  serviceMonitor:
+    enabled: false
+
+health:
+  readinessPath: /readyz
+  livenessPath: /livez
+  startupPath: /startupz
+
+env:
+  - name: SYNAPSE_JWT_SECRET
+    valueFrom:
+      secretKeyRef:
+        name: {{ include "synapse-platform.fullname" . }}-secret
+        key: jwt-secret
+  - name: JWT_SECRET
+      valueFrom:
+        secretKeyRef:
+          name: {{ include "synapse-platform.fullname" . }}-secret
+          key: jwt-secret
+
+spec:
+  {{- if not .Values.autoscaling.enabled }}
+  replicas: {{ .Values.replicaCount }}
+  {{- end }}

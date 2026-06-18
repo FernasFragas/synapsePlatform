@@ -1,0 +1,5 @@
+kube_context         = "kind-synapse-platform"
+namespace            = "synapse-platform"
+image_tag            = "dev"
+replica_count        = 1
+enable_observability = false

@@ -1,0 +1,487 @@
+openapi: 3.0.3
+info:
+  title: Synapse Platform API
+  version: 0.1.0
+  description: |
+    HTTP API for querying normalized events and generated summaries from Synapse Platform.
+  license:
+    name: Proprietary
+servers:
+  - url: http://localhost:8080
+    description: Local development server
+tags:
+  - name: Operations
+    description: Health and metrics endpoints. These do not require authentication.
+  - name: Events
+    description: JWT-protected event query endpoints.
+  - name: Summary
+    description: JWT-protected summary endpoint.
+paths:
+  /livez:
+    get:
+      tags:
+        - Operations
+      summary: Liveness probe
+      description: Returns 200 when the process is running.
+      operationId: getLivez
+      security: []
+      responses:
+        "200":
+          description: Process is alive.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResult"
+              examples:
+                alive:
+                  value:
+                    status: alive
+                    checks: {}
+  /readyz:
+    get:
+      tags:
+        - Operations
+      summary: Readiness probe
+      description: Checks dependencies such as storage and Kafka freshness.
+      operationId: getReadyz
+      security: []
+      responses:
+        "200":
+          description: Service is ready to receive traffic.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResult"
+              examples:
+                healthy:
+                  value:
+                    status: healthy
+                    checks:
+                      sqlite: ok
+                      kafka: ok
+        "503":
+          description: Service is not ready to receive traffic.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResult"
+              examples:
+                unhealthy:
+                  value:
+                    status: unhealthy
+                    checks:
+                      kafka: last poll exceeded freshness threshold
+  /healthz:
+    get:
+      tags:
+        - Operations
+      summary: Health check
+      description: Alias for `/readyz`.
+      operationId: getHealthz
+      security: []
+      responses:
+        "200":
+          description: Service is healthy.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResult"
+              examples:
+                healthy:
+                  value:
+                    status: healthy
+                    checks:
+                      sqlite: ok
+                      kafka: ok
+        "503":
+          description: Service is unhealthy.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResult"
+              examples:
+                unhealthy:
+                  value:
+                    status: unhealthy
+                    checks:
+                      kafka: last poll exceeded freshness threshold
+  /metrics:
+    get:
+      tags:
+        - Operations
+      summary: Prometheus metrics
+      description: Returns Prometheus-compatible metrics when a metrics handler is configured.
+      operationId: getMetrics
+      security: []
+      responses:
+        "200":
+          description: Metrics exposition payload.
+          content:
+            text/plain:
+              schema:
+                type: string
+              examples:
+                metrics:
+                  value: |
+                    # HELP http_server_duration_milliseconds Measures the duration of inbound HTTP requests.
+                    # TYPE http_server_duration_milliseconds histogram
+  /v1/events:
+    get:
+      tags:
+        - Events
+      summary: List events
+      description: Returns a page of stored normalized events.
+      operationId: listEvents
+      security:
+        - bearerAuth:
+            - read:events
+      parameters:
+        - name: cursor
+          in: query
+          description: Cursor returned by the previous page.
+          required: false
+          schema:
+            type: string
+        - name: limit
+          in: query
+          description: Maximum number of events to return. Invalid or non-positive values default to 20.
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            default: 20
+        - name: domain
+          in: query
+          description: Optional Tier 2 filter for event domain.
+          required: false
+          schema:
+            type: string
+          example: energy
+        - name: event_type
+          in: query
+          description: Optional Tier 2 filter for event type.
+          required: false
+          schema:
+            type: string
+          example: temperature_reading
+        - name: entity_id
+          in: query
+          description: Optional Tier 2 filter for entity ID.
+          required: false
+          schema:
+            type: string
+          example: sensor-42
+        - name: from
+          in: query
+          description: Optional Tier 2 lower time bound for `occurred_at`, formatted as RFC3339.
+          required: false
+          schema:
+            type: string
+            format: date-time
+          example: "2025-01-15T00:00:00Z"
+        - name: to
+          in: query
+          description: Optional Tier 2 upper time bound for `occurred_at`, formatted as RFC3339.
+          required: false
+          schema:
+            type: string
+            format: date-time
+          example: "2025-01-16T00:00:00Z"
+      responses:
+        "200":
+          description: Event page.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EventListResponse"
+              examples:
+                events:
+                  value:
+                    data:
+                      - event_id: 550e8400-e29b-41d4-a716-446655440000
+                        domain: iot
+                        event_type: temperature_reading
+                        entity_id: sensor-42
+                        occurred_at: "2025-01-15T10:30:00Z"
+                        source: env-sensor
+                        schema_version: "1.0"
+                        data: {}
+                    next_cursor: "2025-01-15T10:30:00Z|550e8400-e29b-41d4-a716-446655440000"
+                    has_more: true
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+  /v1/events/{id}:
+    get:
+      tags:
+        - Events
+      summary: Get event by ID
+      description: Returns a single stored normalized event.
+      operationId: getEvent
+      security:
+        - bearerAuth:
+            - read:events
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Event UUID.
+          schema:
+            type: string
+            format: uuid
+          example: 550e8400-e29b-41d4-a716-446655440000
+      responses:
+        "200":
+          description: Event found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Event"
+              examples:
+                event:
+                  value:
+                    event_id: 550e8400-e29b-41d4-a716-446655440000
+                    domain: iot
+                    event_type: temperature_reading
+                    entity_id: sensor-42
+                    occurred_at: "2025-01-15T10:30:00Z"
+                    source: env-sensor
+                    schema_version: "1.0"
+                    data: {}
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+  /v1/summary:
+    get:
+      tags:
+        - Summary
+      summary: Get generated summary
+      description: Returns a generated or cached summary for events since a timestamp.
+      operationId: getSummary
+      security:
+        - bearerAuth:
+            - read:events
+      parameters:
+        - name: domain
+          in: query
+          description: Optional event domain to summarize.
+          required: false
+          schema:
+            type: string
+          example: energy
+        - name: since
+          in: query
+          description: Start of the summary window, formatted as RFC3339. Defaults to the last 24 hours.
+          required: false
+          schema:
+            type: string
+            format: date-time
+          example: "2025-01-15T00:00:00Z"
+      responses:
+        "200":
+          description: Summary report.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Summary"
+              examples:
+                summary:
+                  value:
+                    domain: energy
+                    window_from: "2025-01-15T00:00:00Z"
+                    model: mistral:7b
+                    content: Energy usage increased during the afternoon window.
+                    created_at: "2025-01-15T12:30:00Z"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "503":
+          description: Summarizer is disabled.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                disabled:
+                  value:
+                    status: 503
+                    error: Service Unavailable
+                    message: summarizer_disabled
+                    request_id: 550e8400-e29b-41d4-a716-446655440000
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT bearer token. Protected operations require the `read:events` scope.
+  responses:
+    Unauthorized:
+      description: Missing or invalid bearer token.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          examples:
+            unauthorized:
+              value:
+                status: 401
+                error: Unauthorized
+                message: unauthorized
+                request_id: 550e8400-e29b-41d4-a716-446655440000
+    Forbidden:
+      description: Token is valid but lacks the required scope.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          examples:
+            forbidden:
+              value:
+                status: 403
+                error: Forbidden
+                message: forbidden
+                request_id: 550e8400-e29b-41d4-a716-446655440000
+    NotFound:
+      description: Requested event was not found.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          examples:
+            notFound:
+              value:
+                status: 404
+                error: Not Found
+                message: failed to get event
+                request_id: 550e8400-e29b-41d4-a716-446655440000
+    InternalServerError:
+      description: Internal server error.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          examples:
+            internal:
+              value:
+                status: 500
+                error: Internal Server Error
+                message: failed to list events
+                request_id: 550e8400-e29b-41d4-a716-446655440000
+  schemas:
+    HealthResult:
+      type: object
+      required:
+        - status
+        - checks
+      properties:
+        status:
+          type: string
+          enum:
+            - alive
+            - healthy
+            - unhealthy
+        checks:
+          type: object
+          additionalProperties:
+            type: string
+    Event:
+      type: object
+      description: Wire response for `api.EventResponse`, derived from `ingestor.BaseEvent`.
+      required:
+        - event_id
+        - domain
+        - event_type
+        - entity_id
+        - occurred_at
+        - source
+        - schema_version
+        - data
+      properties:
+        event_id:
+          type: string
+          format: uuid
+        domain:
+          type: string
+        event_type:
+          type: string
+        entity_id:
+          type: string
+          minLength: 1
+          maxLength: 255
+        occurred_at:
+          type: string
+          format: date-time
+        source:
+          type: string
+        schema_version:
+          type: string
+          pattern: '^[0-9]+(\.[0-9]+){1,2}([\-+][0-9A-Za-z.-]+)?$'
+          example: "1.0"
+        data:
+          type: object
+          additionalProperties: true
+    EventListResponse:
+      type: object
+      description: Wire response for `api.ListResponse`.
+      required:
+        - data
+        - has_more
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Event"
+        next_cursor:
+          type: string
+        has_more:
+          type: boolean
+    Summary:
+      type: object
+      description: Wire response for `api.Report`.
+      required:
+        - domain
+        - window_from
+        - model
+        - content
+        - created_at
+      properties:
+        domain:
+          type: string
+        window_from:
+          type: string
+          format: date-time
+        model:
+          type: string
+        content:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+    Error:
+      type: object
+      description: Wire response for `api.ErrorResponse`.
+      required:
+        - status
+        - error
+      properties:
+        status:
+          type: integer
+          format: int32
+        error:
+          type: string
+        message:
+          type: string
+        request_id:
+          type: string

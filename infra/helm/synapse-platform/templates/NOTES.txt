@@ -1,0 +1,60 @@
+Synapse Platform has been installed.
+
+Release:
+Name:      {{ .Release.Name }}
+Namespace: {{ .Release.Namespace }}
+Chart:     {{ .Chart.Name }} {{ .Chart.Version }}
+App:       {{ .Chart.AppVersion }}
+
+{{- if .Values.ingress.enabled }}
+
+Ingress is enabled.
+
+Hosts:
+{{- range .Values.ingress.hosts }}
+- {{ .host }}
+{{- end }}
+
+Try the readiness endpoint:
+
+{{- range .Values.ingress.hosts }}
+curl http://{{ .host }}/readyz
+{{- end }}
+
+{{- else }}
+
+Ingress is disabled.
+
+To access Synapse locally, run:
+
+kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "synapse-platform.fullname" . }} {{ .Values.service.port }}:
+{{ .Values.service.port }}
+
+Then check readiness:
+
+curl http://localhost:{{ .Values.service.port }}/readyz
+
+{{- end }}
+
+Health endpoints:
+
+Liveness:  /livez
+Readiness: /readyz
+Health:    /healthz
+Metrics:   /metrics
+
+Authenticated API examples:
+
+curl http://localhost:{{ .Values.service.port }}/v1/events \
+  -H "Authorization: Bearer <token>"
+
+curl http://localhost:{{ .Values.service.port }}/v1/summary \
+  -H "Authorization: Bearer <token>"
+
+This file does not create Kubernetes resources. Helm just prints it after:
+
+helm install synapse-platform infra/helm/synapse-platform
+
+or:
+
+helm upgrade --install synapse-platform infra/helm/synapse-platform

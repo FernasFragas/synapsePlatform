@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: synapse-platform
+  labels:
+    app.kubernetes.io/name: synapse-platform
+    app.kubernetes.io/part-of: synapse-platform
