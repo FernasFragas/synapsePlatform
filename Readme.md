@@ -129,6 +129,64 @@ make kafka-send-sample
 
 ---
 
+## Running Locally
+
+Start Kafka and supporting local resources:
+
+```bash
+make local-resources
+```
+
+Run the service:
+
+```bash
+make run
+```
+
+Send sample messages:
+
+```bash
+make kafka-send-sample
+```
+
+Run the full Docker Compose stack:
+
+```bash
+docker compose up -d --build
+```
+
+The Docker stack includes Ollama and pulls `mistral:7b` for the summary endpoint. The first run can take a while because of the model download.
+
+## Testing
+
+Run the normal Go test suite:
+
+```bash
+go test ./...
+```
+
+Run tests with coverage:
+
+```bash
+make test-coverage
+```
+
+Run the e2e summary flow against Docker Compose:
+
+```bash
+make e2e-test
+```
+
+Run performance tests:
+
+```bash
+make perf-test
+make perf-evolution-report
+```
+
+The repository currently has unit tests across API, auth, ingestion, Kafka acknowledgement behavior, logging decorators, metrics wrappers, SQLite storage, and Ollama client behavior. The e2e summary test is behind the `e2e` build tag.
+
+
 ## API Usage
 
 ### Authentication
