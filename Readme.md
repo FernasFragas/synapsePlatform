@@ -1,12 +1,30 @@
 # Synapse Platform
+
 ![Go](https://img.shields.io/badge/Go-00ADD8?style=for-the-badge&logo=go&logoColor=white)
 ![Kafka](https://img.shields.io/badge/Apache_Kafka-231F20?style=for-the-badge&logo=apache-kafka&logoColor=white)
 ![SQLite](https://img.shields.io/badge/SQLite-07405E?style=for-the-badge&logo=sqlite&logoColor=white)
 ![Docker](https://img.shields.io/badge/Docker-2CA5E0?style=for-the-badge&logo=docker&logoColor=white)
-![Make](https://img.shields.io/badge/Make-427819?style=for-the-badge&logo=gnu&logoColor=white)
+![OpenTelemetry](https://img.shields.io/badge/OpenTelemetry-000000?style=for-the-badge&logo=opentelemetry&logoColor=white)
+![Prometheus](https://img.shields.io/badge/Prometheus-E6522C?style=for-the-badge&logo=prometheus&logoColor=white)
+![Terraform](https://img.shields.io/badge/Terraform-844FBA?style=for-the-badge&logo=terraform&logoColor=white)
+![Helm](https://img.shields.io/badge/Helm-0F1689?style=for-the-badge&logo=helm&logoColor=white)
 
-A high-performance event ingestion and processing platform built in Go. Synapse consumes device and service data from Kafka, normalizes it into strongly-typed domain events, persists them to SQLite, and exposes them via a JWT-authenticated HTTP API.
+## Overview
 
+Synapse Platform is a Go-based event intelligence platform for ingesting, normalizing, storing, and analyzing heterogeneous event streams.
+
+It combines:
+- Kafka-based ingestion
+- delivery-aware message processing
+- strongly typed domain normalization
+- JWT-secured HTTP APIs
+- OpenTelemetry tracing
+- Prometheus-compatible metrics
+- structured logging with sensitive-data redaction
+- DLQ-backed failure handling
+- configurable batching and worker-pool processing
+- optional LLM-generated event summaries
+- Docker Compose, Helm, and Terraform deployment paths
 ## What It Does
 
 Synapse Platform ingests heterogeneous event streams from multiple sources, transforms them into normalized domain events, and stores them for querying and analysis. Perfect for:
@@ -57,6 +75,36 @@ Requests pass through middleware in this order (outermost to innermost):
 5. **CORS** - Origin validation with configurable allowed origins
 6. **Logger** - HTTP request/response logging
 7. **Authenticate** - JWT Bearer token validation and identity extraction
+
+## Architecture Flow chart
+![Architecture.png](Architecture.png)
+
+## System Architecture
+
+![architecture_synapsPlatform1.png](architecture_synapsPlatform1.png)
+
+## Performance Evidence
+
+The latest checked-in local benchmark report is:
+
+`performance-reports/synapse-performance-report-20260614-130006.md`
+
+Environment from that report:
+
+- Darwin 25.5.0
+- arm64
+- commit `f47629a`
+
+Reported results:
+
+| Test | Messages | Insert success | Commit rate | Throughput | Final Kafka lag | List query |
+|---|---:|---:|---:|---:|---:|---:|
+| Low load | 600 | 100% | 100% | 9.5 msg/sec | 0 | 5 ms |
+| Medium load | 6,000 | 100% | 100% | 82.2 msg/sec | 0 | 5 ms |
+| High load | 30,000 | 100% | 100% | 750.0 msg/sec | 0 | 5 ms |
+
+These are local benchmark numbers from the included scripts, not production SLAs. Their value is mainly that they show measurement discipline and iterative improvement over earlier reports.
+
 
 ## Prerequisites
 
