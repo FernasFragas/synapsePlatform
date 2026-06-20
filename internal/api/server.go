@@ -23,15 +23,28 @@ type Summarizer interface {
 	Summarize(ctx context.Context, req Request) (*Report, error)
 }
 
-type LLMClient interface {
-	Complete(ctx context.Context, prompt string) (string, error)
-}
-
 // AggregateReader is satisfied by *sqllite.Repo (Phase 1.4).
 type AggregateReader interface {
 	AggregateByDomain(ctx context.Context, since time.Time) ([]DomainStat, error)
-	LatestSummary(ctx context.Context, domain string, since time.Time) (*Report, bool, error)
-	SaveSummary(ctx context.Context, r *Report) error
+	LatestSummary(ctx context.Context, lookup SummaryLookup) (*Report, bool, error)
+	SaveSummary(ctx context.Context, r *Report) (int64, error)
+	SaveSummaryEvidenceLinks(ctx context.Context, links []SummaryEvidenceLink) error
+}
+
+// SummaryLookup carries the full cache key dimensions for a summary lookup.
+// The repository matches on all fields so that changing any one of them
+// (model, provider, prompt version, inference params, or input data) results
+// in a cache miss rather than returning a stale summary generated under
+// different conditions.
+type SummaryLookup struct {
+	Domain        string
+	WindowFrom    time.Time
+	Provider      string
+	Model         string
+	PromptVersion string
+	Temperature   float64
+	MaxTokens     int
+	InputHash     string
 }
 
 type Request struct {
@@ -39,16 +52,62 @@ type Request struct {
 	Since  time.Time
 }
 type Report struct {
-	Domain     string    `json:"domain"`
-	WindowFrom time.Time `json:"window_from"`
-	Model      string    `json:"model"`
-	Content    string    `json:"content"`
-	CreatedAt  time.Time `json:"created_at"`
+	Domain            string    `json:"domain"`
+	WindowFrom        time.Time `json:"window_from"`
+	Model             string    `json:"model"`
+	Content           string    `json:"content"`
+	StructuredContent string    `json:"structured_content,omitempty"`
+	Provider          string    `json:"provider,omitempty"`
+	PromptVersion     string    `json:"prompt_version,omitempty"`
+	InputHash         string    `json:"input_hash,omitempty"`
+	CreatedAt         time.Time `json:"created_at"`
 }
 type DomainStat struct {
 	Domain, EventType   string
 	Count               int64
 	FirstSeen, LastSeen time.Time
+}
+
+// DefaultMaxEvidenceEvents is the bounded set size for the curated evidence
+// passed to the model.
+const DefaultMaxEvidenceEvents = 30
+
+// EvidenceRequest selects the bounded evidence set for a summary.
+type EvidenceRequest struct {
+	Domain     string
+	Since      time.Time
+	Until      time.Time // zero value means "now"
+	MaxResults int       // <= 0 falls back to DefaultMaxEvidenceEvents
+}
+
+// SummaryEvidenceEvent is a redacted, stable event field set the model is
+// allowed to see and cite. It includes no raw payloads or secrets. The
+// evidence selection step produces these.
+type SummaryEvidenceEvent struct {
+	EventID    string
+	Domain     string
+	EventType  string
+	EntityID   string
+	OccurredAt time.Time
+}
+
+// Evidence relationship constants for the intelligence_summary_events join
+// table. The relationship column records why a particular event is linked to
+// a summary: it was part of the evidence set, it was flagged as a notable
+// event, or it was referenced by a recommended action.
+const (
+	EvidenceRelationshipEvidence       = "evidence"
+	EvidenceRelationshipNotable        = "notable"
+	EvidenceRelationshipRecommendation = "recommendation"
+)
+
+// SummaryEvidenceLink is a single row in the intelligence_summary_events join
+// table. It connects a persisted summary to an event it cited, with the
+// relationship explaining the connection.
+type SummaryEvidenceLink struct {
+	SummaryID    int64
+	EventID      string
+	Relationship string
 }
 
 type Server struct {

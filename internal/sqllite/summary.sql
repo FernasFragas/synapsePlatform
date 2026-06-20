@@ -60,7 +60,34 @@ CREATE TABLE IF NOT EXISTS summaries (
     window_from TIMESTAMP NOT NULL,
     model       TEXT NOT NULL,
     content     TEXT NOT NULL,
+    structured_content TEXT,
+    provider    TEXT,
+    prompt_version TEXT,
+    input_hash  TEXT,
     created_at  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE INDEX IF NOT EXISTS idx_summaries_lookup ON summaries(domain, window_from, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS intelligence_summary_events (
+    summary_id INTEGER NOT NULL,
+    event_id TEXT NOT NULL,
+    relationship TEXT NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (summary_id, event_id, relationship),
+    FOREIGN KEY (summary_id) REFERENCES summaries(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_intelligence_summary_events_event_id
+ON intelligence_summary_events(event_id);
+
+CREATE TABLE IF NOT EXISTS intelligence_summary_events (
+    summary_id INTEGER NOT NULL,
+    event_id   TEXT NOT NULL,
+    relationship TEXT NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (summary_id, event_id, relationship)
+);
+
+CREATE INDEX IF NOT EXISTS idx_intelligence_summary_events_event_id
+ON intelligence_summary_events(event_id);

@@ -11,12 +11,12 @@ import (
 	"synapsePlatform/internal/auth"
 	"synapsePlatform/internal/health"
 	"synapsePlatform/internal/ingestor"
+	"synapsePlatform/internal/intelligence/provider"
+	"synapsePlatform/internal/intelligence/summary"
 	"synapsePlatform/internal/kafka"
-	"synapsePlatform/internal/llm"
 	synnapLog "synapsePlatform/internal/log"
 	"synapsePlatform/internal/metrics"
 	"synapsePlatform/internal/sqllite"
-	"synapsePlatform/internal/summary"
 	"syscall"
 	"time"
 
@@ -178,18 +178,52 @@ func main() {
 
 	var summarizer api.Summarizer
 	if cfg.LLM.Enabled {
-		llmClient := llm.NewOllamaClient(
+		// Build the Ollama provider from the existing llm config. The richer
+		// intelligence.providers config (3.7) is not yet implemented, so the
+		// router is populated backwards-compatibly from cfg.LLM. When
+		// intelligence config lands, this branch will prefer it and fall back
+		// to cfg.LLM only when intelligence config is absent.
+		ollamaProvider := provider.NewOllamaClient(
 			cfg.LLM.Host,
 			cfg.LLM.Model,
+			"", // embedding model: configured in 3.7
 			cfg.LLM.Temperature,
 			cfg.LLM.MaxTokens,
 			cfg.LLM.Timeout,
 		)
 
-		summarizer = summary.New(db, llmClient, cfg.LLM.Model)
+		providerRouter, err := provider.NewRouter(
+			map[string]provider.ModelProvider{
+				ollamaProvider.Name(): ollamaProvider,
+			},
+			provider.RouterConfig{
+				DefaultCompletionProvider: ollamaProvider.Name(),
+				DefaultEmbeddingProvider:  ollamaProvider.Name(),
+			},
+		)
+		if err != nil {
+			logger.Error("failed to build provider router", "error", err)
+			os.Exit(1)
+		}
+
+		// *provider.Router satisfies summary.Completer because it exposes the
+		// matching Complete(ctx, provider.CompletionRequest) signature. The
+		// summary package declares its own small interface and never imports
+		// the router type directly.
+		cacheMetrics, err := metrics.NewSummaryCacheMetrics(meter)
+		if err != nil {
+			logger.Error("failed to build summary cache metrics", "error", err)
+			os.Exit(1)
+		}
+
+		summarizer = summary.New(
+			db, providerRouter,
+			ollamaProvider.Name(), cfg.LLM.Model, cfg.LLM.MaxTokens, cfg.LLM.Temperature,
+			summary.WithCacheMetrics(cacheMetrics),
+			summary.WithEvidenceReader(db),
+		)
 		summarizer = synnapLog.NewSummarizer(logger, summarizer)
 
-		var err error
 		summarizer, err = metrics.NewSummarizer(meter, tracer, summarizer)
 		if err != nil {
 			logger.Error("failed to build metrics summarizer", "error", err)
