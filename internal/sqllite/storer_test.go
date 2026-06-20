@@ -3,6 +3,7 @@ package sqllite_test
 import (
 	"context"
 	"fmt"
+	"synapsePlatform/internal/api"
 	"synapsePlatform/internal/ingestor"
 	"synapsePlatform/internal/sqllite"
 	"testing"
@@ -326,6 +327,351 @@ func (s *StorerTestSuite) TestStoreBatch_MixedEventTypes_AllPersist() {
 		s.Require().NoError(err)
 		s.Equal(event.EventType, got.EventType)
 	}
+}
+
+// --- Structured summary persistence (3.2.4 Option A) ---
+
+func (s *StorerTestSuite) TestSaveAndLatestSummary_RoundTripsStructuredFields() {
+	since := time.Now().UTC().Truncate(time.Hour)
+	report := &api.Report{
+		Domain:            "energy",
+		WindowFrom:        since,
+		Model:             "mistral:7b",
+		Content:           "Spike in auth failures.",
+		StructuredContent: `{"summary":"Spike in auth failures.","risk_level":"high"}`,
+		Provider:          "ollama",
+		PromptVersion:     "summary.v1",
+		InputHash:         "abc123def456",
+		CreatedAt:         time.Now().UTC(),
+	}
+
+	_, err := s.repo.SaveSummary(s.ctx, report)
+	s.Require().NoError(err)
+
+	got, ok, err := s.repo.LatestSummary(s.ctx, api.SummaryLookup{
+		Domain:        report.Domain,
+		WindowFrom:    report.WindowFrom,
+		Provider:      report.Provider,
+		Model:         report.Model,
+		PromptVersion: report.PromptVersion,
+		InputHash:     report.InputHash,
+	})
+	s.Require().NoError(err)
+	s.True(ok)
+	s.Equal(report.Domain, got.Domain)
+	s.Equal(report.WindowFrom, got.WindowFrom)
+	s.Equal(report.Model, got.Model)
+	s.Equal(report.Content, got.Content)
+	s.Equal(report.StructuredContent, got.StructuredContent)
+	s.Equal(report.Provider, got.Provider)
+	s.Equal(report.PromptVersion, got.PromptVersion)
+	s.Equal(report.InputHash, got.InputHash)
+}
+
+func (s *StorerTestSuite) TestSaveSummary_LegacyFieldsOnly_StillPersists() {
+	since := time.Now().UTC().Truncate(time.Hour)
+	report := &api.Report{
+		Domain:     "energy",
+		WindowFrom: since,
+		Model:      "mistral:7b",
+		Content:    "Free-form summary without structured data.",
+		CreatedAt:  time.Now().UTC(),
+	}
+
+	_, err := s.repo.SaveSummary(s.ctx, report)
+	s.Require().NoError(err)
+
+	got, ok, err := s.repo.LatestSummary(s.ctx, api.SummaryLookup{
+		Domain:     report.Domain,
+		WindowFrom: report.WindowFrom,
+		Model:      report.Model,
+		InputHash:  report.InputHash,
+	})
+	s.Require().NoError(err)
+	s.True(ok)
+	s.Equal(report.Content, got.Content)
+	s.Empty(got.StructuredContent, "legacy summaries store NULL structured_content")
+	s.Empty(got.Provider)
+	s.Empty(got.PromptVersion)
+	s.Empty(got.InputHash)
+}
+
+func (s *StorerTestSuite) TestLatestSummary_NotFound_ReturnsFalse() {
+	got, ok, err := s.repo.LatestSummary(s.ctx, api.SummaryLookup{
+		Domain:     "nonexistent",
+		WindowFrom: time.Now().UTC(),
+		Model:      "mistral:7b",
+		InputHash:  "no-such-hash",
+	})
+	s.Require().NoError(err)
+	s.False(ok)
+	s.Nil(got)
+}
+
+func (s *StorerTestSuite) TestLatestSummary_ReturnsMostRecent() {
+	since := time.Now().UTC().Truncate(time.Hour)
+	older := &api.Report{
+		Domain: "energy", WindowFrom: since, Model: "mistral:7b",
+		Content: "older summary", InputHash: "shared-hash",
+		CreatedAt: time.Now().UTC().Add(-2 * time.Minute),
+	}
+	newer := &api.Report{
+		Domain: "energy", WindowFrom: since, Model: "mistral:7b",
+		Content: "newer summary", InputHash: "shared-hash",
+		CreatedAt: time.Now().UTC(),
+	}
+
+	_, err := s.repo.SaveSummary(s.ctx, older)
+	s.Require().NoError(err)
+	_, err = s.repo.SaveSummary(s.ctx, newer)
+	s.Require().NoError(err)
+
+	got, ok, err := s.repo.LatestSummary(s.ctx, api.SummaryLookup{
+		Domain:     "energy",
+		WindowFrom: since,
+		Model:      "mistral:7b",
+		InputHash:  "shared-hash",
+	})
+	s.Require().NoError(err)
+	s.True(ok)
+	s.Equal("newer summary", got.Content)
+}
+
+func (s *StorerTestSuite) TestLatestSummary_DifferentInputHash_IsCacheMiss() {
+	since := time.Now().UTC().Truncate(time.Hour)
+	report := &api.Report{
+		Domain: "energy", WindowFrom: since, Model: "mistral:7b",
+		Content: "original", InputHash: "hash-A",
+		CreatedAt: time.Now().UTC(),
+	}
+	_, err := s.repo.SaveSummary(s.ctx, report)
+	s.Require().NoError(err)
+
+	// Same domain/window/model but different input_hash should miss.
+	got, ok, err := s.repo.LatestSummary(s.ctx, api.SummaryLookup{
+		Domain:     "energy",
+		WindowFrom: since,
+		Model:      "mistral:7b",
+		InputHash:  "hash-B",
+	})
+	s.Require().NoError(err)
+	s.False(ok, "different input_hash must be a cache miss")
+	s.Nil(got)
+}
+
+func (s *StorerTestSuite) TestLatestSummary_DifferentModel_IsCacheMiss() {
+	since := time.Now().UTC().Truncate(time.Hour)
+	report := &api.Report{
+		Domain: "energy", WindowFrom: since, Model: "mistral:7b",
+		Content: "original", InputHash: "shared-hash",
+		CreatedAt: time.Now().UTC(),
+	}
+	_, err := s.repo.SaveSummary(s.ctx, report)
+	s.Require().NoError(err)
+
+	got, ok, err := s.repo.LatestSummary(s.ctx, api.SummaryLookup{
+		Domain:     "energy",
+		WindowFrom: since,
+		Model:      "llama3",
+		InputHash:  "shared-hash",
+	})
+	s.Require().NoError(err)
+	s.False(ok, "different model must be a cache miss")
+	s.Nil(got)
+}
+
+// --- Summary evidence ---
+
+func (s *StorerTestSuite) TestListSummaryEvidence_ReturnsRecentEventsForDomain() {
+	since := time.Now().UTC().Truncate(time.Hour)
+	s.seedEvents(
+		s.energyEvent("meter-1", since.Add(5*time.Minute)),
+		s.energyEvent("meter-2", since.Add(10*time.Minute)),
+		s.financialEvent("account-1", since.Add(15*time.Minute)),
+	)
+
+	evidence, err := s.repo.ListSummaryEvidence(s.ctx, api.EvidenceRequest{
+		Domain:     "energy",
+		Since:      since,
+		MaxResults: 10,
+	})
+	s.Require().NoError(err)
+	s.Len(evidence, 2)
+	for _, e := range evidence {
+		s.Equal("energy", e.Domain)
+		s.NotEmpty(e.EventID)
+		s.NotEmpty(e.EventType)
+	}
+}
+
+func (s *StorerTestSuite) TestListSummaryEvidence_AllDomainsWhenDomainEmpty() {
+	since := time.Now().UTC().Truncate(time.Hour)
+	s.seedEvents(
+		s.energyEvent("meter-1", since.Add(5*time.Minute)),
+		s.financialEvent("account-1", since.Add(10*time.Minute)),
+	)
+
+	evidence, err := s.repo.ListSummaryEvidence(s.ctx, api.EvidenceRequest{
+		Domain:     "",
+		Since:      since,
+		MaxResults: 10,
+	})
+	s.Require().NoError(err)
+	s.Len(evidence, 2)
+}
+
+func (s *StorerTestSuite) TestListSummaryEvidence_BoundedByMaxResults() {
+	since := time.Now().UTC().Truncate(time.Hour)
+	for i := 0; i < 5; i++ {
+		s.Require().NoError(s.repo.StoreData(s.ctx, s.energyEvent(fmt.Sprintf("meter-%d", i), since.Add(time.Duration(i)*time.Minute))))
+	}
+
+	evidence, err := s.repo.ListSummaryEvidence(s.ctx, api.EvidenceRequest{
+		Domain:     "energy",
+		Since:      since,
+		MaxResults: 3,
+	})
+	s.Require().NoError(err)
+	s.Len(evidence, 3, "evidence set must be bounded by MaxResults")
+}
+
+func (s *StorerTestSuite) TestListSummaryEvidence_DefaultsMaxResultsWhenZero() {
+	since := time.Now().UTC().Truncate(time.Hour)
+	evidence, err := s.repo.ListSummaryEvidence(s.ctx, api.EvidenceRequest{
+		Domain:     "energy",
+		Since:      since,
+		MaxResults: 0,
+	})
+	s.Require().NoError(err)
+	s.Empty(evidence, "no events seeded, should return empty slice")
+}
+
+func (s *StorerTestSuite) TestListSummaryEvidence_OrdersByOccurredAtDesc() {
+	since := time.Now().UTC().Truncate(time.Hour)
+	older := s.energyEvent("meter-old", since.Add(1*time.Minute))
+	newer := s.energyEvent("meter-new", since.Add(30*time.Minute))
+	s.seedEvents(older, newer)
+
+	evidence, err := s.repo.ListSummaryEvidence(s.ctx, api.EvidenceRequest{
+		Domain:     "energy",
+		Since:      since,
+		MaxResults: 10,
+	})
+	s.Require().NoError(err)
+	s.Require().Len(evidence, 2)
+	s.True(evidence[0].OccurredAt.After(evidence[1].OccurredAt), "most recent event should be first")
+}
+
+func (s *StorerTestSuite) TestListSummaryEvidence_EmptyWhenNoEventsInWindow() {
+	evidence, err := s.repo.ListSummaryEvidence(s.ctx, api.EvidenceRequest{
+		Domain:     "energy",
+		Since:      time.Now().UTC(),
+		MaxResults: 10,
+	})
+	s.Require().NoError(err)
+	s.Empty(evidence)
+}
+
+func (s *StorerTestSuite) TestListSummaryEvidence_IncludesStableFieldsOnly() {
+	since := time.Now().UTC().Truncate(time.Hour)
+	s.seedEvents(s.energyEvent("meter-1", since.Add(5*time.Minute)))
+
+	evidence, err := s.repo.ListSummaryEvidence(s.ctx, api.EvidenceRequest{
+		Domain:     "energy",
+		Since:      since,
+		MaxResults: 10,
+	})
+	s.Require().NoError(err)
+	s.Require().Len(evidence, 1)
+	e := evidence[0]
+	s.NotEmpty(e.EventID)
+	s.Equal("energy", e.Domain)
+	s.NotEmpty(e.EventType)
+	s.NotEmpty(e.EntityID)
+	s.False(e.OccurredAt.IsZero(), "occurred_at must be populated")
+}
+
+// --- Summary evidence links (3.2.8) ---
+
+func (s *StorerTestSuite) TestSaveSummaryReturnsID() {
+	report := &api.Report{
+		Domain: "energy", WindowFrom: time.Now().UTC().Truncate(time.Hour),
+		Model: "mistral:7b", Content: "test", CreatedAt: time.Now().UTC(),
+	}
+	id, err := s.repo.SaveSummary(s.ctx, report)
+	s.Require().NoError(err)
+	s.Greater(id, int64(0), "SaveSummary must return a valid row ID")
+}
+
+func (s *StorerTestSuite) TestSaveSummaryEvidenceLinks_PersistsLinks() {
+	report := &api.Report{
+		Domain: "energy", WindowFrom: time.Now().UTC().Truncate(time.Hour),
+		Model: "mistral:7b", Content: "test", CreatedAt: time.Now().UTC(),
+	}
+	summaryID, err := s.repo.SaveSummary(s.ctx, report)
+	s.Require().NoError(err)
+
+	links := []api.SummaryEvidenceLink{
+		{SummaryID: summaryID, EventID: "evt-1", Relationship: api.EvidenceRelationshipEvidence},
+		{SummaryID: summaryID, EventID: "evt-2", Relationship: api.EvidenceRelationshipEvidence},
+		{SummaryID: summaryID, EventID: "evt-1", Relationship: api.EvidenceRelationshipNotable},
+	}
+	s.Require().NoError(s.repo.SaveSummaryEvidenceLinks(s.ctx, links))
+
+	var count int
+	s.Require().NoError(s.repo.Db.QueryRowContext(s.ctx,
+		`SELECT COUNT(*) FROM intelligence_summary_events WHERE summary_id = ?`,
+		summaryID,
+	).Scan(&count))
+	s.Equal(3, count)
+}
+
+func (s *StorerTestSuite) TestSaveSummaryEvidenceLinks_IdempotentOnDuplicate() {
+	report := &api.Report{
+		Domain: "energy", WindowFrom: time.Now().UTC().Truncate(time.Hour),
+		Model: "mistral:7b", Content: "test", CreatedAt: time.Now().UTC(),
+	}
+	summaryID, err := s.repo.SaveSummary(s.ctx, report)
+	s.Require().NoError(err)
+
+	links := []api.SummaryEvidenceLink{
+		{SummaryID: summaryID, EventID: "evt-1", Relationship: api.EvidenceRelationshipEvidence},
+	}
+	s.Require().NoError(s.repo.SaveSummaryEvidenceLinks(s.ctx, links))
+	// Save the same link again — should not error or duplicate.
+	s.Require().NoError(s.repo.SaveSummaryEvidenceLinks(s.ctx, links))
+
+	var count int
+	s.Require().NoError(s.repo.Db.QueryRowContext(s.ctx,
+		`SELECT COUNT(*) FROM intelligence_summary_events WHERE summary_id = ? AND event_id = ? AND relationship = ?`,
+		summaryID, "evt-1", api.EvidenceRelationshipEvidence,
+	).Scan(&count))
+	s.Equal(1, count, "INSERT OR IGNORE must prevent duplicates")
+}
+
+func (s *StorerTestSuite) TestSaveSummaryEvidenceLinks_EmptySliceIsNoOp() {
+	s.Require().NoError(s.repo.SaveSummaryEvidenceLinks(s.ctx, nil))
+}
+
+func (s *StorerTestSuite) TestSaveSummaryEvidenceLinks_IndexedByEventID() {
+	report := &api.Report{
+		Domain: "energy", WindowFrom: time.Now().UTC().Truncate(time.Hour),
+		Model: "mistral:7b", Content: "test", CreatedAt: time.Now().UTC(),
+	}
+	summaryID, err := s.repo.SaveSummary(s.ctx, report)
+	s.Require().NoError(err)
+
+	s.Require().NoError(s.repo.SaveSummaryEvidenceLinks(s.ctx, []api.SummaryEvidenceLink{
+		{SummaryID: summaryID, EventID: "evt-shared", Relationship: api.EvidenceRelationshipEvidence},
+	}))
+
+	// Query by event_id using the index to verify it works.
+	var foundSummaryID int64
+	s.Require().NoError(s.repo.Db.QueryRowContext(s.ctx,
+		`SELECT summary_id FROM intelligence_summary_events WHERE event_id = ?`,
+		"evt-shared",
+	).Scan(&foundSummaryID))
+	s.Equal(summaryID, foundSummaryID)
 }
 
 // --- helpers ---
