@@ -1,70 +1,65 @@
-replicaCount: 2
-image:
-  repository: synapse-platform
-  tag: "0.1.0"
-  pullPolicy: IfNotPresent
-resources:
-  requests:
-    cpu: 100m
-    memory: 128Mi
-  limits:
-    cpu: 500m
-    memory: 512Mi
-
-kafka:
-  enabled: true
-  brokers:
-    - kafka:9092
-  topics:
-    - events
-  dlqTopic: events-dlq
-
-llm:
-  enabled: false
-  host: "http://ollama:11434"
-  model: "mistral:7b"
-
-service:
-  type: ClusterIP
-  port: 8080
-
-ingress:
-  enabled: false
-  hosts: []
-  tls: []
-
-autoscaling:
-  enabled: false
-  minReplicas: 2
-  maxReplicas: 10
-  targetCPUUtilizationPercentage: 80
-
-pdb:
-  enabled: true
-  minAvailable: 1
-
-observability:
-  serviceMonitor:
-    enabled: false
-
-health:
-  readinessPath: /readyz
-  livenessPath: /livez
-  startupPath: /startupz
-
-env:
-  - name: SYNAPSE_JWT_SECRET
-    valueFrom:
-      secretKeyRef:
-        name: {{ include "synapse-platform.fullname" . }}-secret
-        key: jwt-secret
-  - name: JWT_SECRET
-      valueFrom:
-        secretKeyRef:
-          name: {{ include "synapse-platform.fullname" . }}-secret
-          key: jwt-secret
-
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "synapse-platform.fullname" . }}
+  labels:
+    {{- include "synapse-platform.labels" . | nindent 4 }}
 spec:
   {{- if not .Values.autoscaling.enabled }}
   replicas: {{ .Values.replicaCount }}
   {{- end }}
+  selector:
+    matchLabels:
+      {{- include "synapse-platform.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "synapse-platform.selectorLabels" . | nindent 8 }}
+      annotations:
+        # Roll pods automatically when the rendered config changes.
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+    spec:
+      securityContext:
+        runAsNonRoot: true
+      containers:
+        - name: {{ .Chart.Name }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          env:
+            - name: SYNAPSE_CONFIG_PATH
+              value: /app/config/config.yaml
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "synapse-platform.fullname" . }}-secret
+                  key: jwt-secret
+          livenessProbe:
+            httpGet:
+              path: {{ .Values.health.livenessPath | default "/livez" }}
+              port: http
+            initialDelaySeconds: {{ .Values.health.liveness.initialDelaySeconds | default 15 }}
+            periodSeconds: {{ .Values.health.liveness.periodSeconds | default 20 }}
+          readinessProbe:
+            httpGet:
+              path: {{ .Values.health.readinessPath | default "/readyz" }}
+              port: http
+            initialDelaySeconds: {{ .Values.health.readiness.initialDelaySeconds | default 5 }}
+            periodSeconds: {{ .Values.health.readiness.periodSeconds | default 10 }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - name: config
+              mountPath: /app/config
+              readOnly: true
+            - name: data
+              mountPath: /data
+      volumes:
+        - name: config
+          configMap:
+            name: {{ include "synapse-platform.fullname" . }}-config
+        - name: data
+          emptyDir: {}

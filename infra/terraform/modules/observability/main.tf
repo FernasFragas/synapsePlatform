@@ -1,5 +1,5 @@
 locals {
-  dashboard_json_path = var.dashboard_json_path != "" ? var.dashboard_json_path : abspath("${path.module}/../../../../grafana-dashboard.json")
+  dashboard_json_path         = var.dashboard_json_path != "" ? var.dashboard_json_path : abspath("${path.module}/../../../../grafana-dashboard.json")
   dashboard_configmap_enabled = var.enabled && var.dashboard_enabled && fileexists(local.dashboard_json_path)
 }
 
